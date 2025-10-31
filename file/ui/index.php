@@ -768,6 +768,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 </div>
                 <hr>
                 <h5>Disabled Rules</h5>
+                <p class="text-muted small">Rows marked <span class="badge warn">Partial</span> contain only download or only upload rule.</p>
                 <div class="table-responsive">
                 <table class="table table-sm table-striped align-middle">
                     <thead>
@@ -817,24 +818,24 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             $time = 'All time';
                             $weekdays = '';
 
-                            if ($download_rule && preg_match('/--dst-range ([^ ]+)/', $download_rule, $m)) {
-                                $iprange = str_replace('-', ' - ', $m[1]);
-                            } elseif ($upload_rule && preg_match('/--src-range ([^ ]+)/', $upload_rule, $m)) {
-                                $iprange = str_replace('-', ' - ', $m[1]);
+                            if ($download_rule && preg_match('/--dst-range ([^ ]+)/', $download_rule, $mDRange)) {
+                                $iprange = str_replace('-', ' - ', $mDRange[1]);
+                            } elseif ($upload_rule && preg_match('/--src-range ([^ ]+)/', $upload_rule, $mURange)) {
+                                $iprange = str_replace('-', ' - ', $mURange[1]);
                             }
-                            if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $m)) {
-                                $dspeed = str_replace('kb', ' kB', $m[1]);
+                            if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $mD)) {
+                                $dspeed = str_replace('kb', ' kB', $mD[1]);
                             }
-                            if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $m)) {
-                                $uspeed = str_replace('kb', ' kB', $m[1]);
+                            if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $mU)) {
+                                $uspeed = str_replace('kb', ' kB', $mU[1]);
                             }
                             $tstart = '';
                             $tstop = '';
                             $src_for_time = $download_rule ?: $upload_rule;
-                            if ($src_for_time && preg_match('/--timestart ([^ ]+)/', $src_for_time, $m)) { $tstart = $m[1]; }
-                            if ($src_for_time && preg_match('/--timestop ([^ ]+)/', $src_for_time, $m)) { $tstop = $m[1]; }
+                            if ($src_for_time && preg_match('/--timestart ([^ ]+)/', $src_for_time, $mTs)) { $tstart = $mTs[1]; }
+                            if ($src_for_time && preg_match('/--timestop ([^ ]+)/', $src_for_time, $mTe)) { $tstop = $mTe[1]; }
                             if ($tstart && $tstop) { $time = $tstart . ' - ' . $tstop; }
-                            if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $m)) { $weekdays = $m[1]; }
+                            if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $mWd)) { $weekdays = $mWd[1]; }
 
                             $i++;
                         ?>
@@ -1002,6 +1003,27 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
             }
 
+            // Client-side validation for Add/Edit form
+            function ipToInt(ip){
+                try { return ip.split('.').reduce((a,b)=> (a<<8) + parseInt(b,10), 0) } catch(e){ return -1 }
+            }
+            function isIPv4(s){
+                return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(s)
+            }
+            function validateLimiterForm(form){
+                const ip0 = form.iprange0.value.trim()
+                const ip1 = (form.iprange1.value||'').trim()
+                if (!isIPv4(ip0)) { showToast('Invalid start IP address','error'); form.iprange0.focus(); return false }
+                if (ip1 && !isIPv4(ip1)) { showToast('Invalid end IP address','error'); form.iprange1.focus(); return false }
+                if (ip1){ const a=ipToInt(ip0), b=ipToInt(ip1); if (a<0 || b<0 || b < a) { showToast('End IP must be greater than or equal to start IP','error'); form.iprange1.focus(); return false } }
+                const ds = parseInt(form.dspeed.value,10), us = parseInt(form.uspeed.value,10)
+                if (!(ds>0) || !(us>0)) { showToast('Speeds must be positive numbers (kB/s)','error'); return false }
+                const t0 = (form.timestart.value||'').trim(), t1=(form.timestop.value||'').trim()
+                if ((t0 && !t1) || (!t0 && t1)) { showToast('Provide both start and stop time','error'); return false }
+                if (t0 && t1 && t0 >= t1) { showToast('Start time must be before stop time','error'); return false }
+                return true
+            }
+
             // Toasts
             function showToast(message, type = 'info', title = ''){
                 const c = document.getElementById('toastContainer')
@@ -1051,6 +1073,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             $("#mulimiterFormAdd").on('submit', function(e) {
                 e.preventDefault();
+                if (!validateLimiterForm(this)) return;
                 if (state.formEditType == 'add') {
                     $(this).find('[type=submit]').val('Adding...').prop('disabled', true)
                     $.ajax({
@@ -1429,22 +1452,46 @@ function showHome() {
         <script src="asset/jquery.min.js"></script>
     </head>
 
-    <body style="background-color: #dedede;">
-        <div class="wraper py-4 bg-white px-3 text-center">
-            <h1 class="text-center">MulImiter</h1>
-            <p class="text-center mb-4">The GUI bandwidth limiter for iptables-mod-hashlimit</p>
-            <hr class="mb-5">
-            <form id="mulimiterFormLogin">
-                <div class="mb-5">
-                    <label class="mb-2">Enter your Password:</label>
-                    <input type="password" name="password" class="form-control mb-3" style="max-width: 400px; margin:auto">
-                    <input type="submit" class="btn btn-success" value="Login">
+<body>
+        <div class="wraper container py-5 px-3" style="max-width: 520px;">
+            <div class="bg-white rounded shadow-sm p-4 text-start">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="mb-0">MulImiter</h2>
+                    <button type="button" class="btn btn-sm btn-toggle-theme" id="btnThemeLogin" onclick="toggleTheme()">Theme: Auto</button>
                 </div>
-            </form>
-            <hr>
-            <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: &nbsp;&nbsp;<a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
+                <p class="text-muted mb-4">The GUI bandwidth limiter for iptables-mod-hashlimit</p>
+                <form id="mulimiterFormLogin">
+                    <label class="mb-2">Enter your Password</label>
+                    <input type="password" name="password" class="form-control mb-3" placeholder="••••••••" autofocus>
+                    <div class="d-grid">
+                        <input type="submit" class="btn btn-success" value="Login">
+                    </div>
+                </form>
+                <hr>
+                <p class="text-center mb-0">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: <a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
+            </div>
         </div>
         <script>
+            // Theme init for login
+            (function(){
+                const THEME_KEY='mulimiter_theme';
+                function applyTheme(theme){
+                    const root=document.documentElement; root.classList.remove('theme-dark');
+                    let label='Light';
+                    if(theme==='dark' || (theme==='auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)){
+                        root.classList.add('theme-dark'); label= theme==='auto'?'Auto (Dark)':'Dark';
+                    } else if(theme==='auto'){ label='Auto (Light)'; }
+                    const btn=document.getElementById('btnThemeLogin'); if(btn) btn.textContent='Theme: '+label;
+                }
+                function init(){ let t=localStorage.getItem(THEME_KEY)||'auto'; applyTheme(t);
+                    if (window.matchMedia){ const mq=window.matchMedia('(prefers-color-scheme: dark)');
+                        if(mq.addEventListener) mq.addEventListener('change',()=>{ if((localStorage.getItem(THEME_KEY)||'auto')==='auto') applyTheme('auto'); });
+                    }
+                }
+                window.toggleTheme=function(){ const THEME_KEY='mulimiter_theme'; const cur=localStorage.getItem(THEME_KEY)||'auto'; const nxt= cur==='auto'?'light':(cur==='light'?'dark':'auto'); localStorage.setItem(THEME_KEY,nxt); applyTheme(nxt); };
+                init();
+            })();
+            if (!inIframe()) { $('.wraper').css({ maxWidth: '520px' }) }
             if (!inIframe()) {
                 $('.wraper').css({
                     maxWidth: '720px'
