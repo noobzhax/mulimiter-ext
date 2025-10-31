@@ -1235,7 +1235,15 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             // Client-side validation for Add/Edit form
             function ipToInt(ip){
-                try { return ip.split('.').reduce((a,b)=> (a<<8) + parseInt(b,10), 0) } catch(e){ return -1 }
+                const parts = ip.split('.')
+                if (parts.length !== 4) return NaN
+                let n = 0
+                for (let i=0;i<4;i++){
+                    const v = Number(parts[i])
+                    if (!Number.isInteger(v) || v < 0 || v > 255) return NaN
+                    n = n * 256 + v
+                }
+                return n
             }
             function isIPv4(s){
                 return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(s)
@@ -1245,7 +1253,14 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 const ip1 = (form.iprange1.value||'').trim()
                 if (!isIPv4(ip0)) { showToast('Invalid start IP address','error'); form.iprange0.focus(); return false }
                 if (ip1 && !isIPv4(ip1)) { showToast('Invalid end IP address','error'); form.iprange1.focus(); return false }
-                if (ip1){ const a=ipToInt(ip0), b=ipToInt(ip1); if (a<0 || b<0 || b < a) { showToast('End IP must be greater than or equal to start IP','error'); form.iprange1.focus(); return false } }
+                if (ip1){
+                    const a = ipToInt(ip0), b = ipToInt(ip1)
+                    if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) {
+                        showToast('End IP must be greater than or equal to start IP','error');
+                        form.iprange1.focus();
+                        return false
+                    }
+                }
                 const ds = parseInt(form.dspeed.value,10), us = parseInt(form.uspeed.value,10)
                 if (!(ds>0) || !(us>0)) { showToast('Speeds must be positive numbers (kB/s)','error'); return false }
                 const t0 = (form.timestart.value||'').trim(), t1=(form.timestop.value||'').trim()
