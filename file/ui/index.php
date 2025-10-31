@@ -837,6 +837,10 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             if ($tstart && $tstop) { $time = $tstart . ' - ' . $tstop; }
                             if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $mWd)) { $weekdays = $mWd[1]; }
 
+                            if (!$dspeed && $upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $mUF)) {
+                                $dspeed = str_replace('kb', ' kB', $mUF[1]);
+                            }
+                            $is_partial = (!$download_rule || !$upload_rule);
                             $i++;
                         ?>
                             <tr>
@@ -844,7 +848,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                                     <input type="checkbox" class="sel-disabled" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>">
                                 </td>
                                 <td>
-                                    <span><?= htmlspecialchars($iprange) ?></span>
+                                    <span><?= htmlspecialchars($iprange) ?></span><?php if ($is_partial) { ?><span class="badge warn ms-1">Partial</span><?php } ?>
                                     <button type="button" class="btn btn-outline-primary btn-sm ms-1" onclick="enableRange(this)" data-iprange="<?= htmlspecialchars(str_replace(' - ', '-', $iprange)) ?>" title="Enable all rules for this range">✅ Enable Range</button>
                                 </td>
                                 <td><span><?= htmlspecialchars($dspeed ?: '-') ?></span></td>
