@@ -97,9 +97,210 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
                 shell_exec("echo \"$untouched\" > $dir/save");
 
+                // also remove from disabled store if present
+                if (file_exists("$dir/disabled")) {
+                    $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                    $disabled_rules = explode("\n", trim($disabled_rules, "\n"));
+                    $remain_disabled = '';
+                    foreach ($disabled_rules as $sv) {
+                        if ($sv && $sv != $urule && $sv != $drule) {
+                            $remain_disabled .= $sv . "\n";
+                        }
+                    }
+                    shell_exec("echo \"" . trim($remain_disabled, "\n") . "\" > $dir/disabled");
+                }
+
                 echo json_encode([
                     'success' => true
                 ]);
+            }
+        } elseif ($_GET['act'] == 'disable') {
+            if ($_POST['drule'] && $_POST['urule']) {
+                $drule           = base64_decode($_POST['drule']);
+                $urule           = base64_decode($_POST['urule']);
+
+                $delete_drule    = str_replace('-A ', '-D ', $drule);
+                $delete_urule    = str_replace('-A ', '-D ', $urule);
+
+                if (!file_exists("$dir/disabled")) {
+                    shell_exec("touch $dir/disabled");
+                }
+
+                $saved_rules     = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                $saved_rules     = explode("\n", trim($saved_rules, "\n"));
+                $remain          = '';
+                foreach ($saved_rules as $sv) {
+                    if ($sv && $sv != $urule && $sv != $drule) {
+                        $remain .= $sv . "\n";
+                    }
+                }
+
+                // remove from active iptables
+                shell_exec("iptables $delete_drule");
+                shell_exec("iptables $delete_urule");
+
+                // move to disabled store
+                $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_new = trim($drule . "\n" . $urule . "\n" . $disabled_old, "\n");
+
+                shell_exec("echo \"$remain\" > $dir/save");
+                shell_exec("echo \"$disabled_new\" > $dir/disabled");
+
+                echo json_encode([
+                    'success' => true
+                ]);
+            }
+        } elseif ($_GET['act'] == 'enable') {
+            if ($_POST['drule'] && $_POST['urule']) {
+                $drule           = base64_decode($_POST['drule']);
+                $urule           = base64_decode($_POST['urule']);
+
+                $insert_drule    = str_replace('-A ', '-I ', $drule);
+                $insert_urule    = str_replace('-A ', '-I ', $urule);
+
+                if (!file_exists("$dir/disabled")) {
+                    shell_exec("touch $dir/disabled");
+                }
+
+                // apply to iptables
+                shell_exec("iptables $insert_drule");
+                shell_exec("iptables $insert_urule");
+
+                // add back to save (prepend)
+                $old_save = shell_exec("cat $dir/save");
+                $new_save = trim($drule . "\n" . $urule . "\n" . $old_save, "\n");
+
+                // remove from disabled store
+                $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_rules = explode("\n", trim($disabled_rules, "\n"));
+                $remain_disabled = '';
+                foreach ($disabled_rules as $sv) {
+                    if ($sv && $sv != $urule && $sv != $drule) {
+                        $remain_disabled .= $sv . "\n";
+                    }
+                }
+
+                shell_exec("echo \"$new_save\" > $dir/save");
+                shell_exec("echo \"" . trim($remain_disabled, "\n") . "\" > $dir/disabled");
+
+                echo json_encode([
+                    'success' => true
+                ]);
+            }
+        } elseif ($_GET['act'] == 'disable_range') {
+            if (!empty($_POST['iprange'])) {
+                $iprange = trim($_POST['iprange']); // format: a.b.c.d-e.f.g.h
+                if (!file_exists("$dir/disabled")) {
+                    shell_exec("touch $dir/disabled");
+                }
+
+                $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                $saved_arr   = array_filter(explode("\n", trim($saved_rules, "\n")));
+
+                $pairs = [];
+                $all_lines = [];
+                foreach ($saved_arr as $line) {
+                    $all_lines[$line] = true;
+                    if (strpos($line, $iprange) !== FALSE && strpos($line, 'mulimiter') !== FALSE) {
+                        $parts = explode('--hashlimit-name', $line);
+                        if (count($parts) > 1) {
+                            $name = trim(explode(' ', $parts[1])[0]);
+                            $mulid = str_replace(['mulimiter_d', 'mulimiter_u'], '', $name);
+                            if (!isset($pairs[$mulid])) $pairs[$mulid] = ['d' => '', 'u' => ''];
+                            if (strpos($name, 'mulimiter_d') !== FALSE) {
+                                $pairs[$mulid]['d'] = $line;
+                            } else {
+                                $pairs[$mulid]['u'] = $line;
+                            }
+                        }
+                    }
+                }
+
+                $remain = '';
+                foreach ($saved_arr as $line) {
+                    $skip = false;
+                    foreach ($pairs as $ru) {
+                        if (($ru['d'] && $line === $ru['d']) || ($ru['u'] && $line === $ru['u'])) { $skip = true; break; }
+                    }
+                    if (!$skip) { $remain .= $line . "\n"; }
+                }
+
+                $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $to_disable = '';
+                foreach ($pairs as $ru) {
+                    if ($ru['d']) {
+                        $delete_drule = str_replace('-A ', '-D ', $ru['d']);
+                        shell_exec("iptables $delete_drule");
+                        $to_disable .= $ru['d'] . "\n";
+                    }
+                    if ($ru['u']) {
+                        $delete_urule = str_replace('-A ', '-D ', $ru['u']);
+                        shell_exec("iptables $delete_urule");
+                        $to_disable .= $ru['u'] . "\n";
+                    }
+                }
+
+                shell_exec("echo \"" . trim($remain, "\n") . "\" > $dir/save");
+                shell_exec("echo \"" . trim($to_disable . $disabled_old, "\n") . "\" > $dir/disabled");
+
+                echo json_encode(['success' => true]);
+            }
+        } elseif ($_GET['act'] == 'enable_range') {
+            if (!empty($_POST['iprange'])) {
+                $iprange = trim($_POST['iprange']); // format: a.b.c.d-e.f.g.h
+                if (!file_exists("$dir/disabled")) {
+                    shell_exec("touch $dir/disabled");
+                }
+
+                $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_arr   = array_filter(explode("\n", trim($disabled_rules, "\n")));
+
+                $pairs = [];
+                foreach ($disabled_arr as $line) {
+                    if (strpos($line, $iprange) !== FALSE && strpos($line, 'mulimiter') !== FALSE) {
+                        $parts = explode('--hashlimit-name', $line);
+                        if (count($parts) > 1) {
+                            $name = trim(explode(' ', $parts[1])[0]);
+                            $mulid = str_replace(['mulimiter_d', 'mulimiter_u'], '', $name);
+                            if (!isset($pairs[$mulid])) $pairs[$mulid] = ['d' => '', 'u' => ''];
+                            if (strpos($name, 'mulimiter_d') !== FALSE) {
+                                $pairs[$mulid]['d'] = $line;
+                            } else {
+                                $pairs[$mulid]['u'] = $line;
+                            }
+                        }
+                    }
+                }
+
+                // apply and rebuild disabled list
+                $new_disabled = '';
+                foreach ($disabled_arr as $line) {
+                    $is_target = false;
+                    foreach ($pairs as $ru) {
+                        if (($ru['d'] && $line === $ru['d']) || ($ru['u'] && $line === $ru['u'])) { $is_target = true; break; }
+                    }
+                    if (!$is_target) { $new_disabled .= $line . "\n"; }
+                }
+
+                $old_save = shell_exec("cat $dir/save");
+                $new_save = trim($old_save, "\n");
+                foreach ($pairs as $ru) {
+                    if ($ru['d']) {
+                        $insert_drule = str_replace('-A ', '-I ', $ru['d']);
+                        shell_exec("iptables $insert_drule");
+                        $new_save = trim($ru['d'] . "\n" . $new_save, "\n");
+                    }
+                    if ($ru['u']) {
+                        $insert_urule = str_replace('-A ', '-I ', $ru['u']);
+                        shell_exec("iptables $insert_urule");
+                        $new_save = trim($ru['u'] . "\n" . $new_save, "\n");
+                    }
+                }
+
+                shell_exec("echo \"$new_save\" > $dir/save");
+                shell_exec("echo \"" . trim($new_disabled, "\n") . "\" > $dir/disabled");
+
+                echo json_encode(['success' => true]);
             }
         } elseif ($_GET['act'] == 'edit') {
 
@@ -243,6 +444,75 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 'success' => true,
             ]);
             shell_exec("rm -rf /www/mulimiter");
+        } elseif ($_GET['act'] == 'bulk') {
+            // Bulk operations: op=disable|enable|delete with arrays drules[] and urules[] (base64 encoded)
+            $op = isset($_POST['op']) ? $_POST['op'] : '';
+            $drules = isset($_POST['drules']) ? $_POST['drules'] : [];
+            $urules = isset($_POST['urules']) ? $_POST['urules'] : [];
+
+            if ($op && is_array($drules) && is_array($urules) && count($drules) == count($urules)) {
+                if (!file_exists("$dir/disabled")) {
+                    shell_exec("touch $dir/disabled");
+                }
+                for ($i = 0; $i < count($drules); $i++) {
+                    $drule_b64 = $drules[$i];
+                    $urule_b64 = $urules[$i];
+                    if (!$drule_b64 || !$urule_b64) continue;
+                    $drule = base64_decode($drule_b64);
+                    $urule = base64_decode($urule_b64);
+
+                    if ($op == 'disable') {
+                        $delete_drule = str_replace('-A ', '-D ', $drule);
+                        $delete_urule = str_replace('-A ', '-D ', $urule);
+                        shell_exec("iptables $delete_drule");
+                        shell_exec("iptables $delete_urule");
+                        // move from save to disabled
+                        $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                        $saved_arr   = explode("\n", trim($saved_rules, "\n"));
+                        $remain = '';
+                        foreach ($saved_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain .= $sv."\n"; }
+                        $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_new = trim($drule."\n".$urule."\n".$disabled_old, "\n");
+                        shell_exec("echo \"".trim($remain, "\n")."\" > $dir/save");
+                        shell_exec("echo \"$disabled_new\" > $dir/disabled");
+                    } elseif ($op == 'enable') {
+                        $insert_drule = str_replace('-A ', '-I ', $drule);
+                        $insert_urule = str_replace('-A ', '-I ', $urule);
+                        shell_exec("iptables $insert_drule");
+                        shell_exec("iptables $insert_urule");
+                        // add to save, remove from disabled
+                        $old_save = shell_exec("cat $dir/save");
+                        $new_save = trim($drule."\n".$urule."\n".$old_save, "\n");
+                        $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_arr   = explode("\n", trim($disabled_rules, "\n"));
+                        $remain_disabled = '';
+                        foreach ($disabled_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain_disabled .= $sv."\n"; }
+                        shell_exec("echo \"$new_save\" > $dir/save");
+                        shell_exec("echo \"".trim($remain_disabled, "\n")."\" > $dir/disabled");
+                    } elseif ($op == 'delete') {
+                        $delete_drule = str_replace('-A ', '-D ', $drule);
+                        $delete_urule = str_replace('-A ', '-D ', $urule);
+                        shell_exec("iptables $delete_drule");
+                        shell_exec("iptables $delete_urule");
+                        // remove from save
+                        $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                        $saved_arr   = explode("\n", trim($saved_rules, "\n"));
+                        $remain = '';
+                        foreach ($saved_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain .= $sv."\n"; }
+                        shell_exec("echo \"".trim($remain, "\n")."\" > $dir/save");
+                        // also remove from disabled
+                        $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_arr   = explode("\n", trim($disabled_rules, "\n"));
+                        $remain_disabled = '';
+                        foreach ($disabled_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain_disabled .= $sv."\n"; }
+                        shell_exec("echo \"".trim($remain_disabled, "\n")."\" > $dir/disabled");
+                    }
+                }
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Invalid bulk payload']);
+            }
+            exit;
         }
         exit;
     }
@@ -350,6 +620,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 <hr>
                 <table class="table table-sm table-bordered text-center">
                     <thead>
+                        <th><input type="checkbox" id="selAllActive"></th>
                         <th>IP/Range</th>
                         <th>D Speed</th>
                         <th>U Speed</th>
@@ -406,13 +677,20 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                                 $uspeed         = $xurule[9];
                         ?>
                                 <tr>
-                                    <td><span id="textIpRange_<?= $i ?>"><?= $iprange ?></span></td>
+                                <td>
+                                    <input type="checkbox" class="sel-active" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>">
+                                </td>
+                                <td>
+                                    <span id="textIpRange_<?= $i ?>"><?= $iprange ?></span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="disableRange(this)" title="Disable all rules for this range">Disable Range</button>
+                                </td>
                                     <td><span id="textDSpeed_<?= $i ?>"><?= str_replace('kb', ' kB', $dspeed) ?></span></td>
                                     <td><span id="textUSpeed_<?= $i ?>"><?= str_replace('kb', ' kB', $uspeed) ?></span></td>
                                     <td><span id="textTime_<?= $i ?>"><?= $time ?></span></td>
                                     <td><span id="textWeekdays_<?= $i ?>"><?= $weekdays ?></span></td>
                                     <td>
                                         <button type="button" class="btn btn-success btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="editRule(this)">Edit</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="disableRule(this)">Disable</button>
                                         <button type="button" class="btn btn-danger btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="deleteRule(this)">Delete</button>
                                     </td>
                                 </tr>
@@ -421,12 +699,118 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         ?>
                     </tbody>
                 </table>
+                <div class="my-2">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="bulkDisableActive()">Disable Selected</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteActive()">Delete Selected</button>
+                </div>
+                <hr>
+                <h5>Disabled Rules</h5>
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selAllDisabled"></th>
+                            <th>IP/Range</th>
+                            <th>D Speed</th>
+                            <th>U Speed</th>
+                            <th>Time</th>
+                            <th>Days</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $disabled_exists = file_exists("$dir/disabled");
+                        $disabled_list = $disabled_exists ? str_replace("\r\n", "\n", shell_exec("cat $dir/disabled")) : '';
+                        $disabled_arr = array_filter(explode("\n", trim($disabled_list, "\n")));
+                        // index by mulid for pairing
+                        $pairs = [];
+                        foreach ($disabled_arr as $rule) {
+                            if (strpos($rule, 'mulimiter_d') !== FALSE || strpos($rule, 'mulimiter_u') !== FALSE) {
+                                // extract mulid from --hashlimit-name
+                                $parts = explode('--hashlimit-name', $rule);
+                                if (count($parts) > 1) {
+                                    $name = trim(explode(' ', $parts[1])[0]);
+                                    $mulid = str_replace(['mulimiter_d', 'mulimiter_u'], '', $name);
+                                    if (!isset($pairs[$mulid])) $pairs[$mulid] = ['d' => '', 'u' => ''];
+                                    if (strpos($name, 'mulimiter_d') !== FALSE) {
+                                        $pairs[$mulid]['d'] = $rule;
+                                    } else {
+                                        $pairs[$mulid]['u'] = $rule;
+                                    }
+                                }
+                            }
+                        }
+
+                        $i = 0;
+                        foreach ($pairs as $mulid => $ru) {
+                            $download_rule = $ru['d'];
+                            $upload_rule = $ru['u'];
+                            if (!$download_rule || !$upload_rule) continue;
+
+                            // parse human-friendly fields similar to active list
+                            $iprange = '';
+                            $dspeed = '';
+                            $uspeed = '';
+                            $time = 'All time';
+                            $weekdays = '';
+
+                            // iprange (dst-range for download)
+                            if (preg_match('/--dst-range ([^ ]+)/', $download_rule, $m)) {
+                                $iprange = str_replace('-', ' - ', $m[1]);
+                            }
+                            // speeds
+                            if (preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $m)) {
+                                $dspeed = str_replace('kb', ' kB', $m[1]);
+                            }
+                            if (preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $m)) {
+                                $uspeed = str_replace('kb', ' kB', $m[1]);
+                            }
+                            // time
+                            $tstart = '';
+                            $tstop = '';
+                            if (preg_match('/--timestart ([^ ]+)/', $download_rule, $m)) { $tstart = $m[1]; }
+                            if (preg_match('/--timestop ([^ ]+)/', $download_rule, $m)) { $tstop = $m[1]; }
+                            if ($tstart && $tstop) { $time = $tstart . ' - ' . $tstop; }
+                            // weekdays
+                            if (preg_match('/--weekdays ([^ ]+)/', $download_rule, $m)) { $weekdays = $m[1]; }
+
+                            $i++;
+                        ?>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="sel-disabled" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>">
+                                </td>
+                                <td>
+                                    <span><?= htmlspecialchars($iprange) ?></span>
+                                    <button type="button" class="btn btn-outline-primary btn-sm ms-1" onclick="enableRange(this)" data-iprange="<?= htmlspecialchars(str_replace(' - ', '-', $iprange)) ?>" title="Enable all rules for this range">Enable Range</button>
+                                </td>
+                                <td><span><?= htmlspecialchars($dspeed) ?></span></td>
+                                <td><span><?= htmlspecialchars($uspeed) ?></span></td>
+                                <td><span><?= htmlspecialchars($time) ?></span></td>
+                                <td><span><?= htmlspecialchars($weekdays) ?></span></td>
+                                <td>
+                                    <button type="button" class="btn btn-primary btn-sm" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>" onclick="enableRule(this)">Enable</button>
+                                    <button type="button" class="btn btn-danger btn-sm" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>" onclick="deleteRule(this)">Delete</button>
+                                </td>
+                            </tr>
+                        <?php }
+                        if ($i == 0) { ?>
+                            <tr>
+                                <td colspan="7" class="text-center"><i>No disabled rules.</i></td>
+                            </tr>
+                        <?php } ?>
+                </tbody>
+            </table>
+            <div class="my-2">
+                <button type="button" class="btn btn-primary btn-sm" onclick="bulkEnableDisabled()">Enable Selected</button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteDisabled()">Delete Selected</button>
+            </div>
             </div>
             <div class="text-center d-none" id="about-page">
                 <h2>About</h2>
                 <p>MulImiter, The GUI bandwidth limiter for iptables-mod-hashlimit.</p>
                 <p>Required iptables-mod-iprange, iptables-mod-hashlimit.</p>
-                <p>Source Code: https://github.com/tegohsx/mulimiter/</p>
+                <p>Source Code: https://github.com/noobzhax/mulimiter-ext</p>
                 <p class="mt-4">
                     <button class="btn btn-danger" onclick="uninstallMe(this)">Uninstall MulImiter</button>
                 </p>
@@ -448,7 +832,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 </form>
             </div>
             <hr>
-            <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a></p>
+            <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: &nbsp;&nbsp;<a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
         </div>
         <script>
             let state = {}
@@ -592,6 +976,61 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
             }
 
+            function disableRule(el) {
+                if (confirm('Disable this rule?')) {
+                    let drule = $(el).attr('data-drule')
+                    let urule = $(el).attr('data-urule')
+                    $.ajax({
+                        url: '<?= $_SERVER['PHP_SELF'] ?>?act=disable',
+                        type: 'post',
+                        dataType: 'json',
+                        cache: false,
+                        data: { urule, drule },
+                        success: r => { if (r.success) location.reload() }
+                    })
+                }
+            }
+
+            function enableRule(el) {
+                let drule = $(el).attr('data-drule')
+                let urule = $(el).attr('data-urule')
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=enable',
+                    type: 'post',
+                    dataType: 'json',
+                    cache: false,
+                    data: { urule, drule },
+                    success: r => { if (r.success) location.reload() }
+                })
+            }
+
+            function disableRange(el) {
+                const ipText = $(el).closest('tr').find('[id^=textIpRange_]').text().trim()
+                const iprange = ipText.replace(/\s+-\s+/,'-')
+                if (confirm('Disable all rules for ' + ipText + ' ?')) {
+                    $.ajax({
+                        url: '<?= $_SERVER['PHP_SELF'] ?>?act=disable_range',
+                        type: 'post',
+                        dataType: 'json',
+                        cache: false,
+                        data: { iprange },
+                        success: r => { if (r.success) location.reload() }
+                    })
+                }
+            }
+
+            function enableRange(el) {
+                const iprange = $(el).attr('data-iprange') || ($(el).closest('tr').find('span').first().text().trim().replace(/\s+-\s+/,'-'))
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=enable_range',
+                    type: 'post',
+                    dataType: 'json',
+                    cache: false,
+                    data: { iprange },
+                    success: r => { if (r.success) location.reload() }
+                })
+            }
+
             function uninstallMe(el) {
                 if (confirm("Do you want to uninstall MulImiter?")) {
                     if (confirm("Yakin, nih, nggak nyesel?")) {
@@ -650,6 +1089,54 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     $('#setting-page').removeClass('d-none');
                 }
             }
+
+            // Select all handlers
+            $(document).on('change', '#selAllActive', function(){
+                $('.sel-active').prop('checked', this.checked)
+            })
+            $(document).on('change', '#selAllDisabled', function(){
+                $('.sel-disabled').prop('checked', this.checked)
+            })
+
+            function collectSelected(cls){
+                const drules = []
+                const urules = []
+                $(cls+':checked').each(function(){
+                    drules.push($(this).attr('data-drule'))
+                    urules.push($(this).attr('data-urule'))
+                })
+                return {drules, urules}
+            }
+
+            function bulkPost(op, sel){
+                if (!sel.drules.length) { alert('No items selected.'); return }
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=bulk',
+                    type: 'post',
+                    dataType: 'json',
+                    cache: false,
+                    data: Object.assign({op}, { 'drules': sel.drules, 'urules': sel.urules }),
+                    traditional: true, // ensure arrays are sent as repeated keys
+                    success: r => { if (r.success) location.reload(); else alert(r.message || 'Failed') }
+                })
+            }
+
+            function bulkDisableActive(){
+                const sel = collectSelected('.sel-active')
+                if (confirm('Disable selected rules?')) bulkPost('disable', sel)
+            }
+            function bulkDeleteActive(){
+                const sel = collectSelected('.sel-active')
+                if (confirm('Delete selected rules?')) bulkPost('delete', sel)
+            }
+            function bulkEnableDisabled(){
+                const sel = collectSelected('.sel-disabled')
+                bulkPost('enable', sel)
+            }
+            function bulkDeleteDisabled(){
+                const sel = collectSelected('.sel-disabled')
+                if (confirm('Delete selected rules?')) bulkPost('delete', sel)
+            }
         </script>
     </body>
 
@@ -704,7 +1191,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 </div>
             </form>
             <hr>
-            <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a></p>
+            <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: &nbsp;&nbsp;<a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
         </div>
         <script>
             if (!inIframe()) {

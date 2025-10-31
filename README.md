@@ -1,39 +1,85 @@
 ## MulImiter
-OpenWrt bandwidth limiter through iptables firewall with PHP GUI
+[![Forked from tegohsx/mulimiter](https://img.shields.io/badge/forked%20from-tegohsx%2Fmulimiter-blue?logo=github)](https://github.com/tegohsx/mulimiter)
+[![Maintained by noobzhax](https://img.shields.io/badge/maintained%20by-noobzhax-success?logo=github)](https://github.com/noobzhax/mulimiter-ext)
+OpenWrt bandwidth limiter using iptables hashlimit with a lightweight PHP GUI.
 
-<img src="https://user-images.githubusercontent.com/101353193/185755988-eb688396-1675-4000-9433-6c8e783a77b8.png" width="45%"> <img src="https://user-images.githubusercontent.com/101353193/185755996-eb7b5e77-0818-44a1-8f54-eb2d45a4d3ff.png" width="45%">
+This repository is a fork of the original MulImiter project, with enhancements and maintenance for additional features and usability.
 
-## Features
-1. Limit download speed per client/IP
-2. Limit upload speed per client/IP
-3. Limit speed with time and days
+**Overview**
+- Uses `iptables` with `-m hashlimit` to throttle per‑IP traffic.
+- Simple PHP UI served from `http://<router-ip>/mulimiter` and a LuCI entry under Services → MulImiter.
+- Rules persist via a small hook in `/etc/firewall.user`.
 
-## Required Packages
+**Key Features**
+- Per‑IP download and upload limits
+- Time range and weekday scheduling
+- Toggle enable/disable per rule
+- Disabled Rules list with re‑enable/delete
+- Toggle enable/disable per IP range
+- Checkboxes per row + Select All
+- Bulk actions: Disable/Delete (active), Enable/Delete (disabled)
 
-```
-git
-iptables-mod-hashlimit
-iptables-mod-iprange
-```
+**Requirements**
+- `iptables-mod-hashlimit`
+- `iptables-mod-iprange`
+- `git` (for install/update)
 
-## Installation
+**Install**
+- Install dependencies:
+  - `opkg update && opkg install iptables-mod-hashlimit iptables-mod-iprange git git-http`
+- Clone and run installer:
+  - `git clone https://github.com/noobzhax/mulimiter-ext.git && cd mulimiter-ext && sh ./installer`
+- If `git` is unavailable, download ZIP from GitHub, extract, then run `sh ./installer` inside the folder.
 
-1. Install required dependencies
+**Access**
+- Web: `http://your_openwrt_ip_address/mulimiter`
+- LuCI: Services → MulImiter
+- Default password: `1234` (change it under Setting)
 
-	```
-	opkg update && opkg install iptables-mod-hashlimit iptables-mod-iprange git git-http
-	```
+**How It Works**
+- Adds two `FORWARD` rules per limiter (download via `--dst-range`, upload via `--src-range`).
+- Enforces thresholds with `-m hashlimit --hashlimit-above <rate> --hashlimit-mode {dstip|srcip}` and `-j DROP` when exceeded.
+- Optional `-m time --timestart/--timestop --weekdays` for scheduling.
+- Persists current rules to `/root/.mulimiter/save` and reapplies via `/root/.mulimiter/run` in `/etc/firewall.user`.
 
-2. Clone this repo then run installer using command below
+**Quick Start**
+- Add a rule: enter IP or range, set D/U speed (kB/s), optional time and weekdays, click Add.
+- Toggle: use Disable/Enable buttons per rule or per range.
+- Bulk: check rows, then use the bulk action buttons under the table.
+- Manage password in Setting.
 
-	```
-	git clone https://github.com/tegohsx/mulimiter.git && cd mulimiter && sh ./installer
-	```
+**Upgrade**
+- Backup rules: `cp /root/.mulimiter/save /root/.mulimiter/save.bak`
+- Pull latest and rerun installer:
+  - `cd /tmp && rm -rf mulimiter-ext && git clone https://github.com/noobzhax/mulimiter-ext.git`
+  - `cd mulimiter-ext && sh ./installer`
 
-	> Note: if you have problem with git you can download this repo as zip, then extract and run the installer
+**Uninstall**
+- From UI: About → Uninstall MulImiter
+- Manual:
+  - Remove hook from `/etc/firewall.user` (line containing `/root/.mulimiter/run`).
+  - Flush MulImiter rules (`iptables -S` then delete rules containing `mulimiter`).
+  - Remove folders: `/root/.mulimiter` and `/www/mulimiter`.
 
-## WebUI Access
+**Security Notes**
+- Change default password immediately.
+- Limit access to the UI (e.g., via LuCI auth or firewall rules).
+- Inputs are executed into `iptables`; keep values sane (valid IPv4, numeric speeds, correct times). Consider placing the UI behind LuCI for additional protection.
 
-http://your_openwrt_ip_address/mulimiter
+**Troubleshooting**
+- Missing modules: ensure `iptables-mod-hashlimit` and `iptables-mod-iprange` are installed.
+- Rules not persistent: verify `/etc/firewall.user` contains `/root/.mulimiter/run` and reload firewall (`/etc/init.d/firewall restart`).
+- UI not loading: confirm files exist at `/www/mulimiter` and `php-cgi` is available; access from `http://<router-ip>/mulimiter`.
+- No effect: verify rules appear in `iptables -S` and are at the top of `FORWARD` chain; check interface/zone path if you use non‑default topology.
 
-Password: **1234**
+**Limitations**
+- IPv4 only (no `ip6tables`/`nftables` support yet).
+- Hashlimit drops traffic above set rate (packet drop shaping), not fair‑queue shaping. For smoother control, a `tc`‑based approach would be required.
+
+**Source Code**
+- Fork: https://github.com/noobzhax/mulimiter-ext
+- Upstream: https://github.com/tegohsx/mulimiter
+
+**Credits**
+- Original project: MulImiter by Teguh Santoso — https://github.com/tegohsx/mulimiter
+- This fork: additional toggles, Disabled Rules, per‑range actions, bulk actions, and UI tweaks — https://github.com/noobzhax/mulimiter-ext
