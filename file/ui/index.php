@@ -85,12 +85,12 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
             }
         } elseif ($_GET['act'] == 'delete') {
-            if ($_POST['drule'] && $_POST['urule']) {
-                $drule           = base64_decode($_POST['drule']);
-                $urule           = base64_decode($_POST['urule']);
+            if ($_POST['drule'] || $_POST['urule']) {
+                $drule           = (isset($_POST['drule']) && $_POST['drule']) ? base64_decode($_POST['drule']) : '';
+                $urule           = (isset($_POST['urule']) && $_POST['urule']) ? base64_decode($_POST['urule']) : '';
 
-                $delete_drule    = str_replace('-A ', '-D ', $drule);
-                $delete_urule    = str_replace('-A ', '-D ', $urule);
+                $delete_drule    = $drule ? str_replace('-A ', '-D ', $drule) : '';
+                $delete_urule    = $urule ? str_replace('-A ', '-D ', $urule) : '';
 
                 $saved_rules    = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                 $saved_rules    = explode("\n", $saved_rules);
@@ -126,16 +126,16 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 ]);
             }
         } elseif ($_GET['act'] == 'disable') {
-            if ($_POST['drule'] && $_POST['urule']) {
-                $drule           = base64_decode($_POST['drule']);
-                $urule           = base64_decode($_POST['urule']);
+            if ($_POST['drule'] || $_POST['urule']) {
+                $drule           = (isset($_POST['drule']) && $_POST['drule']) ? base64_decode($_POST['drule']) : '';
+                $urule           = (isset($_POST['urule']) && $_POST['urule']) ? base64_decode($_POST['urule']) : '';
 
-                $delete_drule    = str_replace('-A ', '-D ', $drule);
-                $delete_urule    = str_replace('-A ', '-D ', $urule);
+                $delete_drule    = $drule ? str_replace('-A ', '-D ', $drule) : '';
+                $delete_urule    = $urule ? str_replace('-A ', '-D ', $urule) : '';
 
                 if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
-                $saved_rules     = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                $saved_rules     = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                 $saved_rules     = explode("\n", trim($saved_rules, "\n"));
                 $remain          = '';
                 foreach ($saved_rules as $sv) {
@@ -145,37 +145,40 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
 
                 // remove from active iptables
-                shell_exec("iptables $delete_drule");
-                shell_exec("iptables $delete_urule");
+                if ($delete_drule) shell_exec("iptables $delete_drule");
+                if ($delete_urule) shell_exec("iptables $delete_urule");
 
                 // move to disabled store
-                $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
-                $disabled_new = trim($drule . "\n" . $urule . "\n" . $disabled_old, "\n");
+                $disabled_old = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
+                $to_add = '';
+                if ($drule) $to_add .= $drule . "\n";
+                if ($urule) $to_add .= $urule . "\n";
+                $disabled_new = trim($to_add . $disabled_old, "\n");
 
-                shell_exec("echo \"$remain\" > $dir/save");
-                shell_exec("echo \"$disabled_new\" > $dir/disabled");
+                ml_write_file("$dir/save", $remain);
+                ml_write_file("$dir/disabled", $disabled_new);
 
                 echo json_encode([
                     'success' => true
                 ]);
             }
         } elseif ($_GET['act'] == 'enable') {
-            if ($_POST['drule'] && $_POST['urule']) {
-                $drule           = base64_decode($_POST['drule']);
-                $urule           = base64_decode($_POST['urule']);
+            if ($_POST['drule'] || $_POST['urule']) {
+                $drule           = (isset($_POST['drule']) && $_POST['drule']) ? base64_decode($_POST['drule']) : '';
+                $urule           = (isset($_POST['urule']) && $_POST['urule']) ? base64_decode($_POST['urule']) : '';
 
-                $insert_drule    = str_replace('-A ', '-I ', $drule);
-                $insert_urule    = str_replace('-A ', '-I ', $urule);
+                $insert_drule    = $drule ? str_replace('-A ', '-I ', $drule) : '';
+                $insert_urule    = $urule ? str_replace('-A ', '-I ', $urule) : '';
 
                 if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
                 // apply to iptables
-                shell_exec("iptables $insert_drule");
-                shell_exec("iptables $insert_urule");
+                if ($insert_drule) shell_exec("iptables $insert_drule");
+                if ($insert_urule) shell_exec("iptables $insert_urule");
 
                 // add back to save (prepend)
                 $old_save = ml_read_file("$dir/save");
-                $new_save = trim($drule . "\n" . $urule . "\n" . $old_save, "\n");
+                $new_save = trim(($drule ? ($drule . "\n") : '') . ($urule ? ($urule . "\n") : '') . $old_save, "\n");
 
                 // remove from disabled store
                 $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
@@ -455,39 +458,37 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             $drules = isset($_POST['drules']) ? $_POST['drules'] : [];
             $urules = isset($_POST['urules']) ? $_POST['urules'] : [];
 
-            if ($op && is_array($drules) && is_array($urules) && count($drules) == count($urules)) {
-                if (!file_exists("$dir/disabled")) {
-                    shell_exec("touch $dir/disabled");
-                }
-                for ($i = 0; $i < count($drules); $i++) {
-                    $drule_b64 = $drules[$i];
-                    $urule_b64 = $urules[$i];
-                    if (!$drule_b64 || !$urule_b64) continue;
-                    $drule = base64_decode($drule_b64);
-                    $urule = base64_decode($urule_b64);
+            if ($op && (is_array($drules) || is_array($urules))) {
+                if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
+                $max = max(count($drules), count($urules));
+                for ($i = 0; $i < $max; $i++) {
+                    $drule_b64 = isset($drules[$i]) ? $drules[$i] : '';
+                    $urule_b64 = isset($urules[$i]) ? $urules[$i] : '';
+                    if (!$drule_b64 && !$urule_b64) continue;
+                    $drule = $drule_b64 ? base64_decode($drule_b64) : '';
+                    $urule = $urule_b64 ? base64_decode($urule_b64) : '';
 
                     if ($op == 'disable') {
-                        $delete_drule = str_replace('-A ', '-D ', $drule);
-                        $delete_urule = str_replace('-A ', '-D ', $urule);
-                        shell_exec("iptables $delete_drule");
-                        shell_exec("iptables $delete_urule");
+                        if ($drule) { $delete_drule = str_replace('-A ', '-D ', $drule); shell_exec("iptables $delete_drule"); }
+                        if ($urule) { $delete_urule = str_replace('-A ', '-D ', $urule); shell_exec("iptables $delete_urule"); }
                         // move from save to disabled
                         $saved_rules = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                         $saved_arr   = explode("\n", trim($saved_rules, "\n"));
                         $remain = '';
                         foreach ($saved_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain .= $sv."\n"; }
                         $disabled_old = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
-                        $disabled_new = trim($drule."\n".$urule."\n".$disabled_old, "\n");
+                        $to_add = '';
+                        if ($drule) $to_add .= $drule."\n";
+                        if ($urule) $to_add .= $urule."\n";
+                        $disabled_new = trim($to_add.$disabled_old, "\n");
                         ml_write_file("$dir/save", trim($remain, "\n"));
                         ml_write_file("$dir/disabled", $disabled_new);
                     } elseif ($op == 'enable') {
-                        $insert_drule = str_replace('-A ', '-I ', $drule);
-                        $insert_urule = str_replace('-A ', '-I ', $urule);
-                        shell_exec("iptables $insert_drule");
-                        shell_exec("iptables $insert_urule");
+                        if ($drule) { $insert_drule = str_replace('-A ', '-I ', $drule); shell_exec("iptables $insert_drule"); }
+                        if ($urule) { $insert_urule = str_replace('-A ', '-I ', $urule); shell_exec("iptables $insert_urule"); }
                         // add to save, remove from disabled
                         $old_save = ml_read_file("$dir/save");
-                        $new_save = trim($drule."\n".$urule."\n".$old_save, "\n");
+                        $new_save = trim(($drule ? ($drule."\n") : '').($urule ? ($urule."\n") : '').$old_save, "\n");
                         $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                         $disabled_arr   = explode("\n", trim($disabled_rules, "\n"));
                         $remain_disabled = '';
@@ -495,10 +496,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         ml_write_file("$dir/save", $new_save);
                         ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
                     } elseif ($op == 'delete') {
-                        $delete_drule = str_replace('-A ', '-D ', $drule);
-                        $delete_urule = str_replace('-A ', '-D ', $urule);
-                        shell_exec("iptables $delete_drule");
-                        shell_exec("iptables $delete_urule");
+                        if ($drule) { $delete_drule = str_replace('-A ', '-D ', $drule); shell_exec("iptables $delete_drule"); }
+                        if ($urule) { $delete_urule = str_replace('-A ', '-D ', $urule); shell_exec("iptables $delete_urule"); }
                         // remove from save
                         $saved_rules = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                         $saved_arr   = explode("\n", trim($saved_rules, "\n"));
@@ -769,7 +768,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     <tbody>
                         <?php
                         $disabled_exists = file_exists("$dir/disabled");
-                        $disabled_list = $disabled_exists ? str_replace("\r\n", "\n", shell_exec("cat $dir/disabled")) : '';
+                        $disabled_list = $disabled_exists ? str_replace("\r\n", "\n", ml_read_file("$dir/disabled")) : '';
                         $disabled_arr = array_filter(explode("\n", trim($disabled_list, "\n")));
                         // index by mulid for pairing
                         $pairs = [];
@@ -792,9 +791,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
                         $i = 0;
                         foreach ($pairs as $mulid => $ru) {
-                            $download_rule = $ru['d'];
-                            $upload_rule = $ru['u'];
-                            if (!$download_rule || !$upload_rule) continue;
+                            $download_rule = isset($ru['d']) ? $ru['d'] : '';
+                            $upload_rule = isset($ru['u']) ? $ru['u'] : '';
 
                             // parse human-friendly fields similar to active list
                             $iprange = '';
@@ -803,43 +801,42 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             $time = 'All time';
                             $weekdays = '';
 
-                            // iprange (dst-range for download)
-                            if (preg_match('/--dst-range ([^ ]+)/', $download_rule, $m)) {
+                            if ($download_rule && preg_match('/--dst-range ([^ ]+)/', $download_rule, $m)) {
+                                $iprange = str_replace('-', ' - ', $m[1]);
+                            } elseif ($upload_rule && preg_match('/--src-range ([^ ]+)/', $upload_rule, $m)) {
                                 $iprange = str_replace('-', ' - ', $m[1]);
                             }
-                            // speeds
-                            if (preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $m)) {
+                            if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $m)) {
                                 $dspeed = str_replace('kb', ' kB', $m[1]);
                             }
-                            if (preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $m)) {
+                            if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $m)) {
                                 $uspeed = str_replace('kb', ' kB', $m[1]);
                             }
-                            // time
                             $tstart = '';
                             $tstop = '';
-                            if (preg_match('/--timestart ([^ ]+)/', $download_rule, $m)) { $tstart = $m[1]; }
-                            if (preg_match('/--timestop ([^ ]+)/', $download_rule, $m)) { $tstop = $m[1]; }
+                            $src_for_time = $download_rule ?: $upload_rule;
+                            if ($src_for_time && preg_match('/--timestart ([^ ]+)/', $src_for_time, $m)) { $tstart = $m[1]; }
+                            if ($src_for_time && preg_match('/--timestop ([^ ]+)/', $src_for_time, $m)) { $tstop = $m[1]; }
                             if ($tstart && $tstop) { $time = $tstart . ' - ' . $tstop; }
-                            // weekdays
-                            if (preg_match('/--weekdays ([^ ]+)/', $download_rule, $m)) { $weekdays = $m[1]; }
+                            if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $m)) { $weekdays = $m[1]; }
 
                             $i++;
                         ?>
                             <tr>
                                 <td>
-                                    <input type="checkbox" class="sel-disabled" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>">
+                                    <input type="checkbox" class="sel-disabled" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>">
                                 </td>
                                 <td>
                                     <span><?= htmlspecialchars($iprange) ?></span>
                                     <button type="button" class="btn btn-outline-primary btn-sm ms-1" onclick="enableRange(this)" data-iprange="<?= htmlspecialchars(str_replace(' - ', '-', $iprange)) ?>" title="Enable all rules for this range">Enable Range</button>
                                 </td>
-                                <td><span><?= htmlspecialchars($dspeed) ?></span></td>
-                                <td><span><?= htmlspecialchars($uspeed) ?></span></td>
+                                <td><span><?= htmlspecialchars($dspeed ?: '-') ?></span></td>
+                                <td><span><?= htmlspecialchars($uspeed ?: '-') ?></span></td>
                                 <td><span><?= htmlspecialchars($time) ?></span></td>
                                 <td><span><?= htmlspecialchars($weekdays) ?></span></td>
                                 <td>
-                                    <button type="button" class="btn btn-primary btn-sm" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>" onclick="enableRule(this)">Enable</button>
-                                    <button type="button" class="btn btn-danger btn-sm" data-drule="<?= base64_encode($download_rule) ?>" data-urule="<?= base64_encode($upload_rule) ?>" onclick="deleteRule(this)">Delete</button>
+                                    <button type="button" class="btn btn-primary btn-sm" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>" onclick="enableRule(this)">Enable</button>
+                                    <button type="button" class="btn btn-danger btn-sm" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>" onclick="deleteRule(this)">Delete</button>
                                 </td>
                             </tr>
                         <?php }
@@ -1015,8 +1012,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             function deleteRule(el) {
                 if (confirm('Delete this rule?')) {
-                    let drule = $(el).attr('data-drule')
-                    let urule = $(el).attr('data-urule')
+                    let drule = $(el).attr('data-drule') || ''
+                    let urule = $(el).attr('data-urule') || ''
                     $.ajax({
                         url: '<?= $_SERVER['PHP_SELF'] ?>?act=delete',
                         type: 'post',
@@ -1051,8 +1048,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             }
 
             function enableRule(el) {
-                let drule = $(el).attr('data-drule')
-                let urule = $(el).attr('data-urule')
+                let drule = $(el).attr('data-drule') || ''
+                let urule = $(el).attr('data-urule') || ''
                 $.ajax({
                     url: '<?= $_SERVER['PHP_SELF'] ?>?act=enable',
                     type: 'post',
