@@ -20,6 +20,7 @@ function ml_write_file($path, $content) {
 }
 
 // metadata helpers to persist rule info by mulid
+function ml_meta_clear() { ml_write_file(ml_meta_path(), json_encode(new stdClass())); }
 function ml_rate_to_int($s) {
     if (preg_match('/(\d+)/', $s, $m)) return intval($m[1]);
     return 0;
@@ -106,6 +107,10 @@ function ml_meta_migrate_if_needed() {
             ]);
         }
     }
+}
+function ml_meta_rebuild() {
+    ml_meta_clear();
+    ml_meta_migrate_if_needed();
 }
 
 // ensure metadata exists
@@ -760,6 +765,18 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             }
             echo json_encode(['success' => true]);
             exit;
+        } elseif ($_GET['act'] == 'rebuild_meta') {
+            ml_meta_rebuild();
+            echo json_encode(['success' => true]);
+            exit;
+        } elseif ($_GET['act'] == 'update_app') {
+            $git = trim(shell_exec('which git'));
+            if (!$git) { echo json_encode(['success'=>false,'message'=>'git not installed. Install git/git-http first.']); exit; }
+            $repo = 'https://github.com/noobzhax/mulimiter-ext.git';
+            $cmd = 'rm -rf /tmp/mulimiter-ext && git clone '.$repo.' /tmp/mulimiter-ext 2>&1 && cd /tmp/mulimiter-ext && sh ./installer 2>&1';
+            $out = shell_exec($cmd);
+            echo json_encode(['success'=>true,'output'=>$out]);
+            exit;
         }
         exit;
     }
@@ -1118,6 +1135,12 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     <label class="mb-2">Restore from backup (JSON file):</label>
                     <input type="file" id="restoreFile" accept="application/json,.json" class="form-control" style="max-width: 420px; margin:auto">
                     <button class="btn btn-outline-danger btn-sm mt-2" type="button" onclick="restoreBackup()">Restore</button>
+                </div>
+                <hr>
+                <h3>Maintenance</h3>
+                <div class="d-flex flex-wrap justify-content-center" style="gap:.5rem;">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="rebuildMeta()">Rebuild Metadata</button>
+                    <button class="btn btn-outline-success btn-sm" type="button" onclick="updateApp(this)">Check & Update App</button>
                 </div>
             </div>
             <div class="d-none" id="docs-page">
@@ -1578,6 +1601,30 @@ function showHome() {
                     })
                 }
                 reader.readAsText(f)
+            }
+
+            function rebuildMeta(){
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=rebuild_meta',
+                    type: 'post',
+                    dataType: 'json',
+                    success: r => { if (r.success) { showToast('Metadata rebuilt.','success'); setTimeout(()=> location.reload(), 500) } else showToast(r.message||'Failed to rebuild.','error') }
+                })
+            }
+
+            function updateApp(btn){
+                const el = btn || { disabled:false, textContent:'' }
+                el.disabled = true; const old = el.textContent; el.textContent = 'Updating...'
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=update_app',
+                    type: 'post',
+                    dataType: 'json',
+                    success: r => {
+                        if (r.success) { showToast('Update process triggered.','success') }
+                        else { showToast(r.message || 'Update failed.','error') }
+                    },
+                    complete: () => { el.disabled=false; el.textContent = old || 'Check & Update App' }
+                })
             }
 
             // Select all handlers
