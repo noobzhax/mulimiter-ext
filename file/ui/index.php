@@ -576,25 +576,37 @@ if ($_SESSION[$app_name]['logedin'] == true) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>MulImiter</title>
         <link rel="stylesheet" href="asset/bootstrap.min.css">
-        <style>
-            .wraper {
-                margin: auto;
-                max-width: 100%;
-            }
-        </style>
+        <link rel="stylesheet" href="asset/app.css">
         <script src="asset/jquery.min.js"></script>
     </head>
 
-    <body style="background-color: #f5f7fb;">
-        <div class="wraper container py-4 bg-white px-3 rounded" style="max-width: 980px;">
-            <h1 class="text-center mb-0">MulImiter</h1>
-            <p class="text-center mb-3 text-muted">The GUI bandwidth limiter for iptables-mod-hashlimit</p>
-            <div class="mb-3 d-flex flex-wrap justify-content-center" style="gap: .5rem;">
-                <button onclick="showHome()" class="btn btn-success btn-sm">Home</button>
-                <button onclick="showSetting()" class="btn btn-info btn-sm">Setting</button>
-                <button onclick="showDocs()" class="btn btn-primary btn-sm">Docs</button>
-                <button onclick="showAbout()" class="btn btn-warning btn-sm">About</button>
-                <button onclick="logout()" class="btn btn-danger btn-sm">Logout</button>
+    <body>
+        <div class="wraper container py-4 bg-white px-3 rounded shadow-sm" style="max-width: 980px;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:.5rem;">
+                <div>
+                    <h1 class="mb-0">MulImiter</h1>
+                    <small class="text-muted">The GUI bandwidth limiter for iptables-mod-hashlimit</small>
+                </div>
+                <div class="d-flex align-items-center" style="gap:.5rem;">
+                    <button type="button" class="btn btn-sm btn-toggle-theme" id="btnTheme" onclick="toggleTheme()">Theme: Auto</button>
+                </div>
+            </div>
+            <hr class="mt-3 mb-2">
+            <?php
+            $list_nav = shell_exec('iptables -S');
+            $list_nav = str_replace("\r\n", "\n", $list_nav);
+            preg_match_all('/mulimiter_d/', $list_nav, $mm);
+            $active_count = count($mm[0]);
+            $disabled_raw = file_exists("$dir/disabled") ? str_replace("\r\n", "\n", file_get_contents("$dir/disabled")) : '';
+            preg_match_all('/mulimiter_d/', $disabled_raw, $mdm);
+            $disabled_count = count($mdm[0]);
+            ?>
+            <div class="mb-3 d-flex flex-wrap justify-content-center app-nav" style="gap: .5rem;">
+                <button id="navHome" onclick="showHome()" class="btn btn-success btn-sm nav-active">🏠 Home <span class="badge" id="badgeActive"><?= $active_count ?></span></button>
+                <button id="navSetting" onclick="showSetting()" class="btn btn-info btn-sm">⚙️ Setting</button>
+                <button id="navDocs" onclick="showDocs()" class="btn btn-primary btn-sm">📘 Docs</button>
+                <button id="navAbout" onclick="showAbout()" class="btn btn-warning btn-sm">ℹ️ About <span class="badge" id="badgeDisabled"><?= $disabled_count ?></span></button>
+                <button id="navLogout" onclick="logout()" class="btn btn-danger btn-sm">⎋ Logout</button>
             </div>
             <div id="home-page">
                 <form method="post" id="mulimiterFormAdd">
@@ -732,16 +744,16 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                                 </td>
                                 <td>
                                     <span id="textIpRange_<?= $i ?>"><?= $iprange ?></span>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="disableRange(this)" title="Disable all rules for this range">Disable Range</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="disableRange(this)" title="Disable all rules for this range">⛔ Disable Range</button>
                                 </td>
                                     <td><span id="textDSpeed_<?= $i ?>"><?= str_replace('kb', ' kB', $dspeed) ?></span></td>
                                     <td><span id="textUSpeed_<?= $i ?>"><?= str_replace('kb', ' kB', $uspeed) ?></span></td>
                                     <td><span id="textTime_<?= $i ?>"><?= $time ?></span></td>
                                     <td><span id="textWeekdays_<?= $i ?>"><?= $weekdays ?></span></td>
                                     <td>
-                                        <button type="button" class="btn btn-success btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="editRule(this)">Edit</button>
-                                        <button type="button" class="btn btn-secondary btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="disableRule(this)">Disable</button>
-                                        <button type="button" class="btn btn-danger btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="deleteRule(this)">Delete</button>
+                                        <button type="button" class="btn btn-success btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="editRule(this)">✎ Edit</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="disableRule(this)">⏸ Disable</button>
+                                        <button type="button" class="btn btn-danger btn-sm" data-drule="<?= base64_encode($ls) ?>" data-urule="<?= base64_encode($urule) ?>" onclick="deleteRule(this)">🗑 Delete</button>
                                     </td>
                                 </tr>
                         <?php }
@@ -832,14 +844,14 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                                 </td>
                                 <td>
                                     <span><?= htmlspecialchars($iprange) ?></span>
-                                    <button type="button" class="btn btn-outline-primary btn-sm ms-1" onclick="enableRange(this)" data-iprange="<?= htmlspecialchars(str_replace(' - ', '-', $iprange)) ?>" title="Enable all rules for this range">Enable Range</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm ms-1" onclick="enableRange(this)" data-iprange="<?= htmlspecialchars(str_replace(' - ', '-', $iprange)) ?>" title="Enable all rules for this range">✅ Enable Range</button>
                                 </td>
                                 <td><span><?= htmlspecialchars($dspeed ?: '-') ?></span></td>
                                 <td><span><?= htmlspecialchars($uspeed ?: '-') ?></span></td>
                                 <td><span><?= htmlspecialchars($time) ?></span></td>
                                 <td><span><?= htmlspecialchars($weekdays) ?></span></td>
                                 <td>
-                                    <button type="button" class="btn btn-primary btn-sm" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>" onclick="enableRule(this)">Enable</button>
+                                    <button type="button" class="btn btn-primary btn-sm" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>" onclick="enableRule(this)">▶ Enable</button>
                                     <button type="button" class="btn btn-danger btn-sm" data-drule="<?= $download_rule ? base64_encode($download_rule) : '' ?>" data-urule="<?= $upload_rule ? base64_encode($upload_rule) : '' ?>" onclick="deleteRule(this)">Delete</button>
                                 </td>
                             </tr>
@@ -971,6 +983,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             <hr>
             <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: &nbsp;&nbsp;<a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
         </div>
+        <div class="toast-container" id="toastContainer"></div>
         <script>
             let state = {}
             state.formEditType = 'add'
@@ -989,6 +1002,53 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
             }
 
+            // Toasts
+            function showToast(message, type = 'info', title = ''){
+                const c = document.getElementById('toastContainer')
+                if (!c) return alert(message)
+                const el = document.createElement('div')
+                el.className = `toast ${type}`
+                el.innerHTML = `<div class="title">${title || (type==='success'?'Success': type==='error'?'Error': type==='warn'?'Warning':'Info')}</div><div class="msg"></div>`
+                el.querySelector('.msg').textContent = message
+                c.appendChild(el)
+                requestAnimationFrame(()=> el.classList.add('show'))
+                setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=> el.remove(), 200) }, 3000)
+            }
+            // Replace alert with toast info for non-critical notices
+            window.alert = (msg)=> showToast(msg,'info')
+
+            // Theme handling
+            const THEME_KEY = 'mulimiter_theme'
+            function applyTheme(theme){
+                const root = document.documentElement
+                root.classList.remove('theme-dark')
+                let label = 'Light'
+                if(theme === 'dark' || (theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)){
+                    root.classList.add('theme-dark')
+                    label = theme === 'auto' ? 'Auto (Dark)' : 'Dark'
+                } else if(theme === 'auto'){
+                    label = 'Auto (Light)'
+                }
+                const btn = document.getElementById('btnTheme');
+                if (btn) btn.textContent = 'Theme: ' + label
+            }
+            function initTheme(){
+                let theme = localStorage.getItem(THEME_KEY) || 'auto'
+                applyTheme(theme)
+                if (window.matchMedia){
+                    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+                    if (mq.addEventListener) mq.addEventListener('change', () => { if ((localStorage.getItem(THEME_KEY) || 'auto') === 'auto') applyTheme('auto') })
+                    else if (mq.addListener) mq.addListener(() => { if ((localStorage.getItem(THEME_KEY) || 'auto') === 'auto') applyTheme('auto') })
+                }
+            }
+            function toggleTheme(){
+                const current = localStorage.getItem(THEME_KEY) || 'auto'
+                const next = current === 'auto' ? 'light' : (current === 'light' ? 'dark' : 'auto')
+                localStorage.setItem(THEME_KEY, next)
+                applyTheme(next)
+            }
+            $(initTheme)
+
             $("#mulimiterFormAdd").on('submit', function(e) {
                 e.preventDefault();
                 if (state.formEditType == 'add') {
@@ -1001,9 +1061,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         data: $(this).serialize(),
                         success: r => {
                             if (r.success) {
-                                location.reload()
+                                showToast('Rule added','success')
+                                setTimeout(()=> location.reload(), 500)
                             } else {
-                                alert(r.message)
+                                showToast(r.message||'Failed to add rule','error')
+                                $(this).find('[type=submit]').val('Add').prop('disabled', false)
                             }
                         }
                     })
@@ -1022,9 +1084,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         processData: false,
                         success: r => {
                             if (r.success) {
-                                location.reload()
+                                showToast('Rule saved','success')
+                                setTimeout(()=> location.reload(), 500)
                             } else {
-                                alert(r.message)
+                                showToast(r.message||'Failed to save rule','error')
+                                $(this).find('[type=submit]').val('Save').prop('disabled', false)
                             }
                         }
                     })
@@ -1049,10 +1113,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     data: $(this).serialize(),
                     success: r => {
                         if (r.success) {
-                            alert("Success.")
+                            showToast('Password changed','success')
                             $("#mulimiterFormPassword")[0].reset()
+                            $(this).find('[type=submit]').val('Change').prop('disabled', false)
                         } else {
-                            alert(r.message)
+                            showToast(r.message||'Failed to change password','error')
                             $(this).find('[type=submit]').val('Change').prop('disabled', false)
                         }
                     }
@@ -1104,11 +1169,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             urule,
                             drule
                         },
-                        success: r => {
-                            if (r.success) {
-                                location.reload()
-                            }
-                        }
+                        success: r => { if (r.success) { showToast('Rule deleted','success'); setTimeout(()=> location.reload(), 400) } }
                     })
                 }
             }
@@ -1123,7 +1184,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         dataType: 'json',
                         cache: false,
                         data: { urule, drule },
-                        success: r => { if (r.success) location.reload() }
+                        success: r => { if (r.success) { showToast('Rule disabled','success'); setTimeout(()=> location.reload(), 400) } }
                     })
                 }
             }
@@ -1137,7 +1198,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     dataType: 'json',
                     cache: false,
                     data: { urule, drule },
-                    success: r => { if (r.success) location.reload() }
+                    success: r => { if (r.success) { showToast('Rule enabled','success'); setTimeout(()=> location.reload(), 400) } }
                 })
             }
 
@@ -1151,7 +1212,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         dataType: 'json',
                         cache: false,
                         data: { iprange },
-                        success: r => { if (r.success) location.reload() }
+                        success: r => { if (r.success) { showToast('Range disabled: '+ipText,'success'); setTimeout(()=> location.reload(), 500) } }
                     })
                 }
             }
@@ -1164,7 +1225,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     dataType: 'json',
                     cache: false,
                     data: { iprange },
-                    success: r => { if (r.success) location.reload() }
+                    success: r => { if (r.success) { showToast('Range enabled: '+iprange.replace('-', ' - '),'success'); setTimeout(()=> location.reload(), 500) } }
                 })
             }
 
@@ -1178,8 +1239,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             dataType: 'json',
                             success: r => {
                                 if (r.success) {
-                                    alert("Success.\n")
-                                    location.reload()
+                                    showToast('Uninstalled','success'); setTimeout(()=> location.reload(), 600)
                                 }
                             }
                         })
@@ -1195,16 +1255,17 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     cache: false,
                     data: 'logout=true',
                     success: r => {
-                        if (r.success) {
-                            location.reload()
-                        }
+                        if (r.success) { showToast('Logged out','success'); setTimeout(()=> location.reload(), 300) }
                     }
                 })
             }
 
-            function showHome() {
+function showHome() {
                 if ($('#home-page').attr('class').includes('d-none')) {
+                    $('.app-nav .btn').removeClass('nav-active');
+                    $('#navHome').addClass('nav-active');
                     $('#about-page').addClass('d-none');
+                    $('#docs-page').addClass('d-none');
                     $('#setting-page').addClass('d-none');
                     $('#home-page').removeClass('d-none');
                 }
@@ -1213,6 +1274,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             function showAbout() {
                 if ($('#about-page').attr('class').includes('d-none')) {
+                    $('.app-nav .btn').removeClass('nav-active');
+                    $('#navAbout').addClass('nav-active');
                     $('#home-page').addClass('d-none');
                     $('#docs-page').addClass('d-none');
                     $('#setting-page').addClass('d-none');
@@ -1222,6 +1285,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             function showSetting() {
                 if ($('#setting-page').attr('class').includes('d-none')) {
+                    $('.app-nav .btn').removeClass('nav-active');
+                    $('#navSetting').addClass('nav-active');
                     $('#home-page').addClass('d-none');
                     $('#docs-page').addClass('d-none');
                     $('#about-page').addClass('d-none');
@@ -1231,6 +1296,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             function showDocs() {
                 if ($('#docs-page').attr('class').includes('d-none')) {
+                    $('.app-nav .btn').removeClass('nav-active');
+                    $('#navDocs').addClass('nav-active');
                     $('#home-page').addClass('d-none');
                     $('#about-page').addClass('d-none');
                     $('#setting-page').addClass('d-none');
@@ -1258,7 +1325,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
             function restoreBackup() {
                 const f = document.getElementById('restoreFile').files[0]
-                if (!f) { alert('Choose a backup file first.'); return }
+                if (!f) { showToast('Choose a backup file first.','warn'); return }
                 const reader = new FileReader()
                 reader.onload = function() {
                     $.ajax({
@@ -1267,8 +1334,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         dataType: 'json',
                         data: { payload: reader.result },
                         success: r => {
-                            if (r.success) { alert('Restore successful.'); location.reload() }
-                            else { alert(r.message || 'Restore failed.') }
+                            if (r.success) { showToast('Restore successful.','success'); setTimeout(()=> location.reload(), 500) }
+                            else { showToast(r.message || 'Restore failed.','error') }
                         }
                     })
                 }
@@ -1293,33 +1360,33 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 return {drules, urules}
             }
 
-            function bulkPost(op, sel){
-                if (!sel.drules.length && !sel.urules.length) { alert('No items selected.'); return }
+            function bulkPost(op, sel, onok){
+                if (!sel.drules.length && !sel.urules.length) { showToast('No items selected.','warn'); return }
                 $.ajax({
                     url: '<?= $_SERVER['PHP_SELF'] ?>?act=bulk',
                     type: 'post',
                     dataType: 'json',
                     cache: false,
                     data: Object.assign({op}, { 'drules[]': sel.drules, 'urules[]': sel.urules }),
-                    success: r => { if (r.success) location.reload(); else alert(r.message || 'Failed') }
+                    success: r => { if (r.success) { if (onok) onok(); setTimeout(()=> location.reload(), 500) } else showToast(r.message || 'Failed','error') }
                 })
             }
 
             function bulkDisableActive(){
                 const sel = collectSelected('.sel-active')
-                if (confirm('Disable selected rules?')) bulkPost('disable', sel)
+                const c1 = Math.max(sel.drules.length, sel.urules.length); if (confirm('Disable '+c1+' selected rules?')) bulkPost('disable', sel, ()=> showToast('Disabled '+c1+' rules','success'))
             }
             function bulkDeleteActive(){
                 const sel = collectSelected('.sel-active')
-                if (confirm('Delete selected rules?')) bulkPost('delete', sel)
+                const c2 = Math.max(sel.drules.length, sel.urules.length); if (confirm('Delete '+c2+' selected rules?')) bulkPost('delete', sel, ()=> showToast('Deleted '+c2+' rules','success'))
             }
             function bulkEnableDisabled(){
                 const sel = collectSelected('.sel-disabled')
-                bulkPost('enable', sel)
+                const c3 = Math.max(sel.drules.length, sel.urules.length); bulkPost('enable', sel, ()=> showToast('Enabled '+c3+' rules','success'))
             }
             function bulkDeleteDisabled(){
                 const sel = collectSelected('.sel-disabled')
-                if (confirm('Delete selected rules?')) bulkPost('delete', sel)
+                const c4 = Math.max(sel.drules.length, sel.urules.length); if (confirm('Delete '+c4+' selected rules?')) bulkPost('delete', sel, ()=> showToast('Deleted '+c4+' rules','success'))
             }
         </script>
     </body>
