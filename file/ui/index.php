@@ -7,6 +7,18 @@ session_start();
 $dir = '/root/.mulimiter';
 $app_name = 'mulimiter';
 
+// Helper functions: reliable file I/O for save/disabled
+function ml_read_file($path) {
+    return file_exists($path) ? file_get_contents($path) : '';
+}
+function ml_write_file($path, $content) {
+    $dirn = dirname($path);
+    if (!is_dir($dirn)) @mkdir($dirn, 0755, true);
+    $content = str_replace("\r\n", "\n", $content);
+    $content = rtrim($content, "\n");
+    file_put_contents($path, $content . (strlen($content) ? "\n" : ""));
+}
+
 if ($_SESSION[$app_name]['logedin'] == true) {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -63,11 +75,10 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     }
                 }
                 if ($dcurrent && $ucurrent) {
-                    $old    = shell_exec("cat $dir/save");
+                    $old    = ml_read_file("$dir/save");
                     $new    = trim($dcurrent . "\n" . $old, "\n");
                     $new    = trim($ucurrent . "\n" . $new, "\n");
-
-                    shell_exec("echo \"$new\" > $dir/save");
+                    ml_write_file("$dir/save", $new);
                     echo json_encode([
                         'success' => true
                     ]);
@@ -81,7 +92,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 $delete_drule    = str_replace('-A ', '-D ', $drule);
                 $delete_urule    = str_replace('-A ', '-D ', $urule);
 
-                $saved_rules    = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                $saved_rules    = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                 $saved_rules    = explode("\n", $saved_rules);
                 $untouched      = '';
                 foreach ($saved_rules as $sv) {
@@ -95,11 +106,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 shell_exec("iptables $delete_drule");
                 shell_exec("iptables $delete_urule");
 
-                shell_exec("echo \"$untouched\" > $dir/save");
+                ml_write_file("$dir/save", $untouched);
 
                 // also remove from disabled store if present
                 if (file_exists("$dir/disabled")) {
-                    $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                    $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                     $disabled_rules = explode("\n", trim($disabled_rules, "\n"));
                     $remain_disabled = '';
                     foreach ($disabled_rules as $sv) {
@@ -107,7 +118,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             $remain_disabled .= $sv . "\n";
                         }
                     }
-                    shell_exec("echo \"" . trim($remain_disabled, "\n") . "\" > $dir/disabled");
+                    ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
                 }
 
                 echo json_encode([
@@ -122,9 +133,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 $delete_drule    = str_replace('-A ', '-D ', $drule);
                 $delete_urule    = str_replace('-A ', '-D ', $urule);
 
-                if (!file_exists("$dir/disabled")) {
-                    shell_exec("touch $dir/disabled");
-                }
+                if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
                 $saved_rules     = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
                 $saved_rules     = explode("\n", trim($saved_rules, "\n"));
@@ -158,20 +167,18 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 $insert_drule    = str_replace('-A ', '-I ', $drule);
                 $insert_urule    = str_replace('-A ', '-I ', $urule);
 
-                if (!file_exists("$dir/disabled")) {
-                    shell_exec("touch $dir/disabled");
-                }
+                if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
                 // apply to iptables
                 shell_exec("iptables $insert_drule");
                 shell_exec("iptables $insert_urule");
 
                 // add back to save (prepend)
-                $old_save = shell_exec("cat $dir/save");
+                $old_save = ml_read_file("$dir/save");
                 $new_save = trim($drule . "\n" . $urule . "\n" . $old_save, "\n");
 
                 // remove from disabled store
-                $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                 $disabled_rules = explode("\n", trim($disabled_rules, "\n"));
                 $remain_disabled = '';
                 foreach ($disabled_rules as $sv) {
@@ -180,8 +187,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     }
                 }
 
-                shell_exec("echo \"$new_save\" > $dir/save");
-                shell_exec("echo \"" . trim($remain_disabled, "\n") . "\" > $dir/disabled");
+                ml_write_file("$dir/save", $new_save);
+                ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
 
                 echo json_encode([
                     'success' => true
@@ -190,11 +197,9 @@ if ($_SESSION[$app_name]['logedin'] == true) {
         } elseif ($_GET['act'] == 'disable_range') {
             if (!empty($_POST['iprange'])) {
                 $iprange = trim($_POST['iprange']); // format: a.b.c.d-e.f.g.h
-                if (!file_exists("$dir/disabled")) {
-                    shell_exec("touch $dir/disabled");
-                }
+                if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
-                $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                $saved_rules = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                 $saved_arr   = array_filter(explode("\n", trim($saved_rules, "\n")));
 
                 $pairs = [];
@@ -225,7 +230,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     if (!$skip) { $remain .= $line . "\n"; }
                 }
 
-                $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_old = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                 $to_disable = '';
                 foreach ($pairs as $ru) {
                     if ($ru['d']) {
@@ -240,8 +245,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     }
                 }
 
-                shell_exec("echo \"" . trim($remain, "\n") . "\" > $dir/save");
-                shell_exec("echo \"" . trim($to_disable . $disabled_old, "\n") . "\" > $dir/disabled");
+                ml_write_file("$dir/save", trim($remain, "\n"));
+                ml_write_file("$dir/disabled", trim($to_disable . $disabled_old, "\n"));
 
                 echo json_encode(['success' => true]);
             }
@@ -252,7 +257,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     shell_exec("touch $dir/disabled");
                 }
 
-                $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                 $disabled_arr   = array_filter(explode("\n", trim($disabled_rules, "\n")));
 
                 $pairs = [];
@@ -282,7 +287,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     if (!$is_target) { $new_disabled .= $line . "\n"; }
                 }
 
-                $old_save = shell_exec("cat $dir/save");
+                $old_save = ml_read_file("$dir/save");
                 $new_save = trim($old_save, "\n");
                 foreach ($pairs as $ru) {
                     if ($ru['d']) {
@@ -297,8 +302,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     }
                 }
 
-                shell_exec("echo \"$new_save\" > $dir/save");
-                shell_exec("echo \"" . trim($new_disabled, "\n") . "\" > $dir/disabled");
+                ml_write_file("$dir/save", $new_save);
+                ml_write_file("$dir/disabled", trim($new_disabled, "\n"));
 
                 echo json_encode(['success' => true]);
             }
@@ -358,11 +363,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     }
                 }
                 if ($dcurrent && $ucurrent) {
-                    $old    = shell_exec("cat $dir/save");
+                    $old    = ml_read_file("$dir/save");
                     $new    = trim($dcurrent . "\n" . $old, "\n");
                     $new    = trim($ucurrent . "\n" . $new, "\n");
 
-                    shell_exec("echo \"$new\" > $dir/save");
+                    ml_write_file("$dir/save", $new);
                     //end of add }
 
                     //then delete {
@@ -372,7 +377,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     $delete_drule    = str_replace('-A ', '-D ', $drule);
                     $delete_urule    = str_replace('-A ', '-D ', $urule);
 
-                    $saved_rules    = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                    $saved_rules    = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                     $saved_rules    = explode("\n", $saved_rules);
                     $untouched      = '';
                     foreach ($saved_rules as $sv) {
@@ -386,7 +391,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     shell_exec("iptables $delete_drule");
                     shell_exec("iptables $delete_urule");
 
-                    shell_exec("echo \"$untouched\" > $dir/save");
+                    ml_write_file("$dir/save", $untouched);
                     //end of delete
 
                     echo json_encode([
@@ -467,51 +472,95 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         shell_exec("iptables $delete_drule");
                         shell_exec("iptables $delete_urule");
                         // move from save to disabled
-                        $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                        $saved_rules = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                         $saved_arr   = explode("\n", trim($saved_rules, "\n"));
                         $remain = '';
                         foreach ($saved_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain .= $sv."\n"; }
-                        $disabled_old = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_old = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                         $disabled_new = trim($drule."\n".$urule."\n".$disabled_old, "\n");
-                        shell_exec("echo \"".trim($remain, "\n")."\" > $dir/save");
-                        shell_exec("echo \"$disabled_new\" > $dir/disabled");
+                        ml_write_file("$dir/save", trim($remain, "\n"));
+                        ml_write_file("$dir/disabled", $disabled_new);
                     } elseif ($op == 'enable') {
                         $insert_drule = str_replace('-A ', '-I ', $drule);
                         $insert_urule = str_replace('-A ', '-I ', $urule);
                         shell_exec("iptables $insert_drule");
                         shell_exec("iptables $insert_urule");
                         // add to save, remove from disabled
-                        $old_save = shell_exec("cat $dir/save");
+                        $old_save = ml_read_file("$dir/save");
                         $new_save = trim($drule."\n".$urule."\n".$old_save, "\n");
-                        $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                         $disabled_arr   = explode("\n", trim($disabled_rules, "\n"));
                         $remain_disabled = '';
                         foreach ($disabled_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain_disabled .= $sv."\n"; }
-                        shell_exec("echo \"$new_save\" > $dir/save");
-                        shell_exec("echo \"".trim($remain_disabled, "\n")."\" > $dir/disabled");
+                        ml_write_file("$dir/save", $new_save);
+                        ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
                     } elseif ($op == 'delete') {
                         $delete_drule = str_replace('-A ', '-D ', $drule);
                         $delete_urule = str_replace('-A ', '-D ', $urule);
                         shell_exec("iptables $delete_drule");
                         shell_exec("iptables $delete_urule");
                         // remove from save
-                        $saved_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/save"));
+                        $saved_rules = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
                         $saved_arr   = explode("\n", trim($saved_rules, "\n"));
                         $remain = '';
                         foreach ($saved_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain .= $sv."\n"; }
-                        shell_exec("echo \"".trim($remain, "\n")."\" > $dir/save");
+                        ml_write_file("$dir/save", trim($remain, "\n"));
                         // also remove from disabled
-                        $disabled_rules = str_replace("\r\n", "\n", shell_exec("cat $dir/disabled"));
+                        $disabled_rules = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
                         $disabled_arr   = explode("\n", trim($disabled_rules, "\n"));
                         $remain_disabled = '';
                         foreach ($disabled_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain_disabled .= $sv."\n"; }
-                        shell_exec("echo \"".trim($remain_disabled, "\n")."\" > $dir/disabled");
+                        ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
                     }
                 }
                 echo json_encode(['success' => true]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Invalid bulk payload']);
             }
+            exit;
+        } elseif ($_GET['act'] == 'backup') {
+            $save = trim(ml_read_file("$dir/save"), "\n");
+            $disabled = trim(ml_read_file("$dir/disabled"), "\n");
+            $payload = [
+                'version' => trim(@file_get_contents("$dir/version")),
+                'generated_at' => date('c'),
+                'save' => $save ? explode("\n", $save) : [],
+                'disabled' => $disabled ? explode("\n", $disabled) : []
+            ];
+            header('Content-Type: application/json');
+            echo json_encode($payload);
+            exit;
+        } elseif ($_GET['act'] == 'restore') {
+            $payload = isset($_POST['payload']) ? $_POST['payload'] : '';
+            $data = json_decode($payload, true);
+            if (!is_array($data)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid JSON payload']);
+                exit;
+            }
+            $saveArr = isset($data['save']) && is_array($data['save']) ? $data['save'] : [];
+            $disabledArr = isset($data['disabled']) && is_array($data['disabled']) ? $data['disabled'] : [];
+
+            // purge existing mulimiter rules
+            $list = shell_exec('iptables -S');
+            $list = str_replace("\r\n", "\n", $list);
+            $lines = explode("\n", $list);
+            foreach ($lines as $ls) {
+                if (strpos($ls, 'mulimiter') !== FALSE) {
+                    $delete = str_replace('-A ', '-D ', $ls);
+                    shell_exec("iptables $delete");
+                }
+            }
+            // write files
+            ml_write_file("$dir/save", implode("\n", $saveArr));
+            ml_write_file("$dir/disabled", implode("\n", $disabledArr));
+            // re-apply save rules
+            foreach ($saveArr as $rule) {
+                $rule = trim($rule);
+                if (!$rule) continue;
+                $insert = str_replace('-A ', '-I ', $rule);
+                shell_exec("iptables $insert");
+            }
+            echo json_encode(['success' => true]);
             exit;
         }
         exit;
@@ -830,6 +879,16 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         <input type="submit" class="btn btn-success" value="Change">
                     </div>
                 </form>
+                <hr>
+                <h3>Backup & Restore</h3>
+                <div class="mb-3">
+                    <button class="btn btn-outline-primary btn-sm" onclick="downloadBackup()" type="button">Download Backup (JSON)</button>
+                </div>
+                <div class="mb-3">
+                    <label class="mb-2">Restore from backup (JSON file):</label>
+                    <input type="file" id="restoreFile" accept="application/json,.json" class="form-control" style="max-width: 420px; margin:auto">
+                    <button class="btn btn-outline-danger btn-sm mt-2" type="button" onclick="restoreBackup()">Restore</button>
+                </div>
             </div>
             <hr>
             <p class="text-center">Author: &nbsp;&nbsp;<a href="https://github.com/tegohsx/" target="_blank">Tegohsx</a> &nbsp;|&nbsp; Maintainer: &nbsp;&nbsp;<a href="https://github.com/noobzhax" target="_blank">noobzhax</a></p>
@@ -1088,6 +1147,43 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     $('#about-page').addClass('d-none');
                     $('#setting-page').removeClass('d-none');
                 }
+            }
+
+            function downloadBackup() {
+                $.ajax({
+                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=backup',
+                    type: 'post',
+                    dataType: 'json',
+                    success: data => {
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(blob)
+                        a.download = `mulimiter-backup-${new Date().toISOString().replace(/[:]/g,'-')}.json`
+                        document.body.appendChild(a)
+                        a.click()
+                        URL.revokeObjectURL(a.href)
+                        a.remove()
+                    }
+                })
+            }
+
+            function restoreBackup() {
+                const f = document.getElementById('restoreFile').files[0]
+                if (!f) { alert('Choose a backup file first.'); return }
+                const reader = new FileReader()
+                reader.onload = function() {
+                    $.ajax({
+                        url: '<?= $_SERVER['PHP_SELF'] ?>?act=restore',
+                        type: 'post',
+                        dataType: 'json',
+                        data: { payload: reader.result },
+                        success: r => {
+                            if (r.success) { alert('Restore successful.'); location.reload() }
+                            else { alert(r.message || 'Restore failed.') }
+                        }
+                    })
+                }
+                reader.readAsText(f)
             }
 
             // Select all handlers

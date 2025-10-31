@@ -18,6 +18,7 @@ This repository is a fork of the original MulImiter project, with enhancements a
 - Toggle enable/disable per IP range
 - Checkboxes per row + Select All
 - Bulk actions: Disable/Delete (active), Enable/Delete (disabled)
+ - Backup and Restore settings (JSON)
 
 **Requirements**
 - `iptables-mod-hashlimit`
@@ -47,6 +48,7 @@ This repository is a fork of the original MulImiter project, with enhancements a
 - Toggle: use Disable/Enable buttons per rule or per range.
 - Bulk: check rows, then use the bulk action buttons under the table.
 - Manage password in Setting.
+ - Backup/Restore: open Setting → Backup & Restore to download a JSON backup or restore from a previously saved JSON.
 
 **Upgrade**
 - Backup rules: `cp /root/.mulimiter/save /root/.mulimiter/save.bak`
