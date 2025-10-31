@@ -769,14 +769,6 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             ml_meta_rebuild();
             echo json_encode(['success' => true]);
             exit;
-        } elseif ($_GET['act'] == 'update_app') {
-            $git = trim(shell_exec('which git'));
-            if (!$git) { echo json_encode(['success'=>false,'message'=>'git not installed. Install git/git-http first.']); exit; }
-            $repo = 'https://github.com/noobzhax/mulimiter-ext.git';
-            $cmd = 'rm -rf /tmp/mulimiter-ext && git clone '.$repo.' /tmp/mulimiter-ext 2>&1 && cd /tmp/mulimiter-ext && sh ./installer 2>&1';
-            $out = shell_exec($cmd);
-            echo json_encode(['success'=>true,'output'=>$out]);
-            exit;
         }
         exit;
     }
@@ -1140,7 +1132,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 <h3>Maintenance</h3>
                 <div class="d-flex flex-wrap justify-content-center" style="gap:.5rem;">
                     <button class="btn btn-outline-secondary btn-sm" type="button" onclick="rebuildMeta()">Rebuild Metadata</button>
-                    <button class="btn btn-outline-success btn-sm" type="button" onclick="updateApp(this)">Check & Update App</button>
+                    
                 </div>
             </div>
             <div class="d-none" id="docs-page">
@@ -1612,20 +1604,7 @@ function showHome() {
                 })
             }
 
-            function updateApp(btn){
-                const el = btn || { disabled:false, textContent:'' }
-                el.disabled = true; const old = el.textContent; el.textContent = 'Updating...'
-                $.ajax({
-                    url: '<?= $_SERVER['PHP_SELF'] ?>?act=update_app',
-                    type: 'post',
-                    dataType: 'json',
-                    success: r => {
-                        if (r.success) { showToast('Update process triggered.','success') }
-                        else { showToast(r.message || 'Update failed.','error') }
-                    },
-                    complete: () => { el.disabled=false; el.textContent = old || 'Check & Update App' }
-                })
-            }
+            
 
             // Select all handlers
             $(document).on('change', '#selAllActive', function(){
