@@ -457,8 +457,10 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             $op = isset($_POST['op']) ? $_POST['op'] : '';
             $drules = isset($_POST['drules']) ? $_POST['drules'] : [];
             $urules = isset($_POST['urules']) ? $_POST['urules'] : [];
+            if (!is_array($drules) && $drules !== '' && $drules !== null) $drules = [$drules];
+            if (!is_array($urules) && $urules !== '' && $urules !== null) $urules = [$urules];
 
-            if ($op && (is_array($drules) || is_array($urules))) {
+            if ($op && (count($drules) || count($urules))) {
                 if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
                 $max = max(count($drules), count($urules));
                 for ($i = 0; $i < $max; $i++) {
@@ -1202,14 +1204,13 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             }
 
             function bulkPost(op, sel){
-                if (!sel.drules.length) { alert('No items selected.'); return }
+                if (!sel.drules.length && !sel.urules.length) { alert('No items selected.'); return }
                 $.ajax({
                     url: '<?= $_SERVER['PHP_SELF'] ?>?act=bulk',
                     type: 'post',
                     dataType: 'json',
                     cache: false,
-                    data: Object.assign({op}, { 'drules': sel.drules, 'urules': sel.urules }),
-                    traditional: true, // ensure arrays are sent as repeated keys
+                    data: Object.assign({op}, { 'drules[]': sel.drules, 'urules[]': sel.urules }),
                     success: r => { if (r.success) location.reload(); else alert(r.message || 'Failed') }
                 })
             }
