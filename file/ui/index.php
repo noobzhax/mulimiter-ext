@@ -585,18 +585,17 @@ if ($_SESSION[$app_name]['logedin'] == true) {
         <script src="asset/jquery.min.js"></script>
     </head>
 
-    <body style="background-color: #dedede;">
-        <div class="wraper py-4 bg-white px-3">
-            <h1 class="text-center">MulImiter</h1>
-            <p class="text-center mb-4">The GUI bandwidth limiter for iptables-mod-hashlimit</p>
-            <hr>
-            <div class="mb-3 d-flex justify-content-center" style="gap: .5rem;">
-                <button onclick="showHome()" class="btn btn-success">Home</button>
-                <button onclick="showSetting()" class="btn btn-info">Setting</button>
-                <button onclick="showAbout()" class="btn btn-warning">About</button>
-                <button onclick="logout()" class="btn btn-danger">Logout</button>
+    <body style="background-color: #f5f7fb;">
+        <div class="wraper container py-4 bg-white px-3 rounded" style="max-width: 980px;">
+            <h1 class="text-center mb-0">MulImiter</h1>
+            <p class="text-center mb-3 text-muted">The GUI bandwidth limiter for iptables-mod-hashlimit</p>
+            <div class="mb-3 d-flex flex-wrap justify-content-center" style="gap: .5rem;">
+                <button onclick="showHome()" class="btn btn-success btn-sm">Home</button>
+                <button onclick="showSetting()" class="btn btn-info btn-sm">Setting</button>
+                <button onclick="showDocs()" class="btn btn-primary btn-sm">Docs</button>
+                <button onclick="showAbout()" class="btn btn-warning btn-sm">About</button>
+                <button onclick="logout()" class="btn btn-danger btn-sm">Logout</button>
             </div>
-            <hr class="mb-4">
             <div id="home-page">
                 <form method="post" id="mulimiterFormAdd">
                     <table class="table table-sm table-borderless">
@@ -668,7 +667,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
                 </form>
                 <hr>
-                <table class="table table-sm table-bordered text-center">
+                <div class="table-responsive">
+                <table class="table table-sm table-bordered text-center align-middle">
                     <thead>
                         <th><input type="checkbox" id="selAllActive"></th>
                         <th>IP/Range</th>
@@ -749,13 +749,15 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         ?>
                     </tbody>
                 </table>
+                </div>
                 <div class="my-2">
                     <button type="button" class="btn btn-secondary btn-sm" onclick="bulkDisableActive()">Disable Selected</button>
                     <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteActive()">Delete Selected</button>
                 </div>
                 <hr>
                 <h5>Disabled Rules</h5>
-                <table class="table table-sm table-striped">
+                <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle">
                     <thead>
                         <tr>
                             <th><input type="checkbox" id="selAllDisabled"></th>
@@ -848,7 +850,8 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             </tr>
                         <?php } ?>
                 </tbody>
-            </table>
+                </table>
+                </div>
             <div class="my-2">
                 <button type="button" class="btn btn-primary btn-sm" onclick="bulkEnableDisabled()">Enable Selected</button>
                 <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteDisabled()">Delete Selected</button>
@@ -887,6 +890,82 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     <label class="mb-2">Restore from backup (JSON file):</label>
                     <input type="file" id="restoreFile" accept="application/json,.json" class="form-control" style="max-width: 420px; margin:auto">
                     <button class="btn btn-outline-danger btn-sm mt-2" type="button" onclick="restoreBackup()">Restore</button>
+                </div>
+            </div>
+            <div class="d-none" id="docs-page">
+                <h2 class="text-center">Documentation</h2>
+                <div class="row g-3 mt-3">
+                    <div class="col-12 col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-light fw-bold">How To Use (English)</div>
+                            <div class="card-body small text-start">
+                                <ol>
+                                    <li>Open <code>/mulimiter</code> in your browser or via LuCI Services → MulImiter.</li>
+                                    <li>Add a rule: set IP/range, download/upload speeds (kB/s), optional time and weekdays, then click Add.</li>
+                                    <li>Manage rules:
+                                        <ul>
+                                            <li>Edit to change parameters.</li>
+                                            <li>Disable/Enable per rule or per IP range.</li>
+                                            <li>Use checkboxes + bulk buttons to disable/enable/delete multiple rules.</li>
+                                        </ul>
+                                    </li>
+                                    <li>Backup & Restore: Setting → Backup & Restore to download JSON or restore from it.</li>
+                                    <li>Uninstall from About page if needed.</li>
+                                </ol>
+                                <p class="mb-1"><b>Notes</b></p>
+                                <ul>
+                                    <li>Limits use iptables hashlimit and drop on exceed.</li>
+                                    <li>Rules persist via firewall hook at <code>/etc/firewall.user</code>.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-light fw-bold">Cara Pakai (Bahasa Indonesia)</div>
+                            <div class="card-body small text-start">
+                                <ol>
+                                    <li>Buka <code>/mulimiter</code> di browser atau lewat LuCI Services → MulImiter.</li>
+                                    <li>Tambah aturan: isi IP/rentang IP, kecepatan unduh/unggah (kB/s), waktu dan hari (opsional), lalu klik Add.</li>
+                                    <li>Kelola aturan:
+                                        <ul>
+                                            <li>Edit untuk mengubah parameter.</li>
+                                            <li>Disable/Enable per aturan atau per rentang IP.</li>
+                                            <li>Gunakan checkbox + tombol bulk untuk disable/enable/delete banyak aturan sekaligus.</li>
+                                        </ul>
+                                    </li>
+                                    <li>Backup & Restore: Setting → Backup & Restore untuk unduh JSON atau restore dari file yang disimpan.</li>
+                                    <li>Uninstall tersedia pada halaman About jika diperlukan.</li>
+                                </ol>
+                                <p class="mb-1"><b>Catatan</b></p>
+                                <ul>
+                                    <li>Batasan memakai iptables hashlimit dan menjatuhkan paket saat melewati ambang.</li>
+                                    <li>Aturan bertahan melalui hook firewall di <code>/etc/firewall.user</code>.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mt-3">
+                    <div class="card-header bg-light fw-bold">Feature Checklist</div>
+                    <div class="card-body small text-start">
+                        <div class="row">
+                            <div class="col-12 col-md-6">
+                                <label class="d-block"><input type="checkbox" checked disabled> Per‑IP download limit</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Per‑IP upload limit</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Time & weekday scheduling</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Toggle enable/disable per rule</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Toggle per IP range</label>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="d-block"><input type="checkbox" checked disabled> Disabled Rules list & actions</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Checkboxes + Select All</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Bulk actions (enable/disable/delete)</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Backup & Restore (JSON)</label>
+                                <label class="d-block"><input type="checkbox" checked disabled> Responsive layout (mobile/desktop)</label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <hr>
@@ -1135,6 +1214,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             function showAbout() {
                 if ($('#about-page').attr('class').includes('d-none')) {
                     $('#home-page').addClass('d-none');
+                    $('#docs-page').addClass('d-none');
                     $('#setting-page').addClass('d-none');
                     $('#about-page').removeClass('d-none');
                 }
@@ -1143,8 +1223,18 @@ if ($_SESSION[$app_name]['logedin'] == true) {
             function showSetting() {
                 if ($('#setting-page').attr('class').includes('d-none')) {
                     $('#home-page').addClass('d-none');
+                    $('#docs-page').addClass('d-none');
                     $('#about-page').addClass('d-none');
                     $('#setting-page').removeClass('d-none');
+                }
+            }
+
+            function showDocs() {
+                if ($('#docs-page').attr('class').includes('d-none')) {
+                    $('#home-page').addClass('d-none');
+                    $('#about-page').addClass('d-none');
+                    $('#setting-page').addClass('d-none');
+                    $('#docs-page').removeClass('d-none');
                 }
             }
 

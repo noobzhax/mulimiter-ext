@@ -48,7 +48,14 @@ This repository is a fork of the original MulImiter project, with enhancements a
 - Toggle: use Disable/Enable buttons per rule or per range.
 - Bulk: check rows, then use the bulk action buttons under the table.
 - Manage password in Setting.
- - Backup/Restore: open Setting → Backup & Restore to download a JSON backup or restore from a previously saved JSON.
+- Backup/Restore: open Setting → Backup & Restore to download a JSON backup or restore from a previously saved JSON.
+
+**Panduan Singkat (Bahasa Indonesia)**
+- Tambah aturan: isi IP atau rentang, atur kecepatan Unduh/Upload (kB/s), waktu dan hari (opsional), klik Add.
+- Toggle: gunakan tombol Disable/Enable per aturan atau per rentang IP.
+- Bulk: centang beberapa baris, lalu gunakan tombol bulk di bawah tabel.
+- Ganti password di menu Setting.
+- Backup/Restore: buka Setting → Backup & Restore untuk mengunduh file JSON atau melakukan restore dari file tersebut.
 
 **Upgrade**
 - Backup rules: `cp /root/.mulimiter/save /root/.mulimiter/save.bak`
