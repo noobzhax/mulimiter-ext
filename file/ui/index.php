@@ -19,6 +19,98 @@ function ml_write_file($path, $content) {
     file_put_contents($path, $content . (strlen($content) ? "\n" : ""));
 }
 
+// metadata helpers to persist rule info by mulid
+function ml_rate_to_int($s) {
+    if (preg_match('/(\d+)/', $s, $m)) return intval($m[1]);
+    return 0;
+}
+function ml_meta_path() { global $dir; return "$dir/meta.json"; }
+function ml_meta_read() {
+    $raw = ml_read_file(ml_meta_path());
+    $j = json_decode($raw, true);
+    return is_array($j) ? $j : [];
+}
+function ml_meta_write($meta) {
+    $json = json_encode($meta);
+    ml_write_file(ml_meta_path(), $json);
+}
+function ml_meta_set($mulid, $rec) {
+    $meta = ml_meta_read();
+    $cur = isset($meta[$mulid]) && is_array($meta[$mulid]) ? $meta[$mulid] : [];
+    $meta[$mulid] = array_merge($cur, $rec);
+    ml_meta_write($meta);
+}
+function ml_meta_remove($mulid) {
+    $meta = ml_meta_read();
+    if (isset($meta[$mulid])) { unset($meta[$mulid]); ml_meta_write($meta); }
+}
+function ml_extract_mulid($rule) {
+    $parts = explode('--hashlimit-name', $rule);
+    if (count($parts) > 1) {
+        $name = trim(explode(' ', $parts[1])[0]);
+        return str_replace(['mulimiter_d','mulimiter_u'], '', $name);
+    }
+    return '';
+}
+
+function ml_meta_migrate_if_needed() {
+    global $dir;
+    $meta = ml_meta_read();
+    if (!empty($meta)) return; // already initialized
+    $pairs = [];
+    $activeSet = [];
+    $save_text = str_replace("\r\n", "\n", ml_read_file("$dir/save"));
+    $save_arr = array_filter(explode("\n", trim($save_text, "\n")));
+    foreach ($save_arr as $line) {
+        if (strpos($line, 'mulimiter') === FALSE) continue;
+        $mid = ml_extract_mulid($line);
+        if (!$mid) continue;
+        if (!isset($pairs[$mid])) $pairs[$mid] = ['d'=>'', 'u'=>''];
+        if (strpos($line, 'mulimiter_d') !== FALSE) $pairs[$mid]['d'] = $line; else $pairs[$mid]['u'] = $line;
+        $activeSet[$mid] = true;
+    }
+    $dis_text = str_replace("\r\n", "\n", ml_read_file("$dir/disabled"));
+    $dis_arr = array_filter(explode("\n", trim($dis_text, "\n")));
+    foreach ($dis_arr as $line) {
+        if (strpos($line, 'mulimiter') === FALSE) continue;
+        $mid = ml_extract_mulid($line);
+        if (!$mid) continue;
+        if (!isset($pairs[$mid])) $pairs[$mid] = ['d'=>'', 'u'=>''];
+        if (strpos($line, 'mulimiter_d') !== FALSE) $pairs[$mid]['d'] = $line; else $pairs[$mid]['u'] = $line;
+        if (!isset($activeSet[$mid])) $activeSet[$mid] = false;
+    }
+    if (empty($pairs)) return;
+    foreach ($pairs as $mid => $ru) {
+        $download_rule = $ru['d'];
+        $upload_rule = $ru['u'];
+        $iprange = '';
+        $dspeed = 0; $uspeed = 0;
+        $t0 = ''; $t1 = ''; $wd = '';
+        if ($download_rule && preg_match('/--dst-range ([^ ]+)/', $download_rule, $m)) { $iprange = $m[1]; }
+        elseif ($upload_rule && preg_match('/--src-range ([^ ]+)/', $upload_rule, $m)) { $iprange = $m[1]; }
+        if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $m)) { $dspeed = ml_rate_to_int($m[1]); }
+        if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $m)) { $uspeed = ml_rate_to_int($m[1]); }
+        $src_for_time = $download_rule ?: $upload_rule;
+        if ($src_for_time && preg_match('/--timestart ([^ ]+)/', $src_for_time, $m)) { $t0 = $m[1]; }
+        if ($src_for_time && preg_match('/--timestop ([^ ]+)/', $src_for_time, $m)) { $t1 = $m[1]; }
+        if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $m)) { $wd = $m[1]; }
+        if ($iprange || $dspeed || $uspeed || $t0 || $t1 || $wd) {
+            ml_meta_set($mid, [
+                'iprange' => $iprange,
+                'dspeed' => $dspeed,
+                'uspeed' => $uspeed,
+                'timestart' => $t0,
+                'timestop' => $t1,
+                'weekdays' => $wd,
+                'status' => ($activeSet[$mid] ? 'active' : 'disabled')
+            ]);
+        }
+    }
+}
+
+// ensure metadata exists
+ml_meta_migrate_if_needed();
+
 if ($_SESSION[$app_name]['logedin'] == true) {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -37,6 +129,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 }
 
                 $arr_weekdays = $_POST['weekdays'];
+                $weekdays = '';
                 if ($arr_weekdays) {
                     $weekdays = implode(',', $arr_weekdays);
                     if ($mod_time) {
@@ -79,6 +172,16 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     $new    = trim($dcurrent . "\n" . $old, "\n");
                     $new    = trim($ucurrent . "\n" . $new, "\n");
                     ml_write_file("$dir/save", $new);
+                    // persist metadata
+                    ml_meta_set($mulid, [
+                        'iprange' => $iprange,
+                        'dspeed' => intval($_POST['dspeed']),
+                        'uspeed' => intval($_POST['uspeed']),
+                        'timestart' => $timestart,
+                        'timestop' => $timestop,
+                        'weekdays' => $weekdays,
+                        'status' => 'active'
+                    ]);
                     echo json_encode([
                         'success' => true
                     ]);
@@ -158,6 +261,10 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 ml_write_file("$dir/save", $remain);
                 ml_write_file("$dir/disabled", $disabled_new);
 
+                // update metadata status
+                $mulid_a = $drule ? ml_extract_mulid($drule) : ($urule ? ml_extract_mulid($urule) : '');
+                if ($mulid_a) { ml_meta_set($mulid_a, ['status' => 'disabled']); }
+
                 echo json_encode([
                     'success' => true
                 ]);
@@ -170,9 +277,37 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 $insert_drule    = $drule ? str_replace('-A ', '-I ', $drule) : '';
                 $insert_urule    = $urule ? str_replace('-A ', '-I ', $urule) : '';
 
+                // reconstruct missing side from metadata if available (single-click full restore)
+                $mulid_meta = $drule ? ml_extract_mulid($drule) : ($urule ? ml_extract_mulid($urule) : '');
+                if ($mulid_meta) {
+                    $meta_all = ml_meta_read();
+                    if (isset($meta_all[$mulid_meta])) {
+                        $rec = $meta_all[$mulid_meta];
+                        $iprange = isset($rec['iprange']) ? $rec['iprange'] : '';
+                        $ds = isset($rec['dspeed']) ? intval($rec['dspeed']).'kb/s' : '';
+                        $us = isset($rec['uspeed']) ? intval($rec['uspeed']).'kb/s' : '';
+                        $t0 = isset($rec['timestart']) ? $rec['timestart'] : '';
+                        $t1 = isset($rec['timestop']) ? $rec['timestop'] : '';
+                        $wd = isset($rec['weekdays']) ? $rec['weekdays'] : '';
+                        $mod_time = '';
+                        if ($t0 && $t1) { $mod_time = "-m time --timestart $t0 --timestop $t1"; }
+                        if ($wd) { $mod_time .= ($mod_time? ' ' : '') . "--weekdays $wd"; $mod_time = trim($mod_time) ? (strpos($mod_time,'-m time')===0? $mod_time : "-m time $mod_time") : $mod_time; }
+                        if (!$insert_drule && $iprange && $ds) {
+                            $baseD = "-I FORWARD -m iprange --dst-range $iprange -m hashlimit --hashlimit-above $ds --hashlimit-mode dstip --hashlimit-name mulimiter_d$mulid_meta" . ($mod_time? " $mod_time" : '') . " -j DROP";
+                            $insert_drule = $baseD;
+                            $drule = str_replace('-I ', '-A ', $baseD);
+                        }
+                        if (!$insert_urule && $iprange && $us) {
+                            $baseU = "-I FORWARD -m iprange --src-range $iprange -m hashlimit --hashlimit-above $us --hashlimit-mode srcip --hashlimit-name mulimiter_u$mulid_meta" . ($mod_time? " $mod_time" : '') . " -j DROP";
+                            $insert_urule = $baseU;
+                            $urule = str_replace('-I ', '-A ', $baseU);
+                        }
+                    }
+                }
+
                 if (!file_exists("$dir/disabled")) { ml_write_file("$dir/disabled", ""); }
 
-                // apply to iptables
+                // apply to iptables (both sides if available)
                 if ($insert_drule) shell_exec("iptables $insert_drule");
                 if ($insert_urule) shell_exec("iptables $insert_urule");
 
@@ -192,6 +327,10 @@ if ($_SESSION[$app_name]['logedin'] == true) {
 
                 ml_write_file("$dir/save", $new_save);
                 ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
+
+                // update metadata status
+                $mulid_a = $drule ? ml_extract_mulid($drule) : ($urule ? ml_extract_mulid($urule) : '');
+                if ($mulid_a) { ml_meta_set($mulid_a, ['status' => 'active']); }
 
                 echo json_encode([
                     'success' => true
@@ -246,6 +385,11 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         shell_exec("iptables $delete_urule");
                         $to_disable .= $ru['u'] . "\n";
                     }
+                    // update metadata status
+                    $mulid_tmp = '';
+                    if ($ru['d']) { $mulid_tmp = ml_extract_mulid($ru['d']); }
+                    else if ($ru['u']) { $mulid_tmp = ml_extract_mulid($ru['u']); }
+                    if ($mulid_tmp) { ml_meta_set($mulid_tmp, ['status' => 'disabled']); }
                 }
 
                 ml_write_file("$dir/save", trim($remain, "\n"));
@@ -293,16 +437,35 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                 $old_save = ml_read_file("$dir/save");
                 $new_save = trim($old_save, "\n");
                 foreach ($pairs as $ru) {
-                    if ($ru['d']) {
-                        $insert_drule = str_replace('-A ', '-I ', $ru['d']);
-                        shell_exec("iptables $insert_drule");
-                        $new_save = trim($ru['d'] . "\n" . $new_save, "\n");
+                    $mulid_tmp = '';
+                    if ($ru['d']) { $mulid_tmp = ml_extract_mulid($ru['d']); }
+                    else if ($ru['u']) { $mulid_tmp = ml_extract_mulid($ru['u']); }
+                    // reconstruct missing side using metadata
+                    if ($mulid_tmp && (!$ru['d'] || !$ru['u'])) {
+                        $meta_all = ml_meta_read();
+                        if (isset($meta_all[$mulid_tmp])) {
+                            $rec = $meta_all[$mulid_tmp];
+                            $iprange = isset($rec['iprange']) ? $rec['iprange'] : '';
+                            $ds = isset($rec['dspeed']) ? intval($rec['dspeed']).'kb/s' : '';
+                            $us = isset($rec['uspeed']) ? intval($rec['uspeed']).'kb/s' : '';
+                            $t0 = isset($rec['timestart']) ? $rec['timestart'] : '';
+                            $t1 = isset($rec['timestop']) ? $rec['timestop'] : '';
+                            $wd = isset($rec['weekdays']) ? $rec['weekdays'] : '';
+                            $mod_time = '';
+                            if ($t0 && $t1) { $mod_time = "-m time --timestart $t0 --timestop $t1"; }
+                            if ($wd) { $mod_time .= ($mod_time? ' ' : '') . "--weekdays $wd"; $mod_time = trim($mod_time) ? (strpos($mod_time,'-m time')===0? $mod_time : "-m time $mod_time") : $mod_time; }
+                            if (!$ru['d'] && $iprange && $ds) {
+                                $ru['d'] = "-A FORWARD -m iprange --dst-range $iprange -m hashlimit --hashlimit-above $ds --hashlimit-mode dstip --hashlimit-name mulimiter_d$mulid_tmp" . ($mod_time? " $mod_time" : '') . " -j DROP";
+                            }
+                            if (!$ru['u'] && $iprange && $us) {
+                                $ru['u'] = "-A FORWARD -m iprange --src-range $iprange -m hashlimit --hashlimit-above $us --hashlimit-mode srcip --hashlimit-name mulimiter_u$mulid_tmp" . ($mod_time? " $mod_time" : '') . " -j DROP";
+                            }
+                        }
                     }
-                    if ($ru['u']) {
-                        $insert_urule = str_replace('-A ', '-I ', $ru['u']);
-                        shell_exec("iptables $insert_urule");
-                        $new_save = trim($ru['u'] . "\n" . $new_save, "\n");
-                    }
+                    if ($ru['d']) { $insert_drule = str_replace('-A ', '-I ', $ru['d']); shell_exec("iptables $insert_drule"); $new_save = trim($ru['d'] . "\n" . $new_save, "\n"); }
+                    if ($ru['u']) { $insert_urule = str_replace('-A ', '-I ', $ru['u']); shell_exec("iptables $insert_urule"); $new_save = trim($ru['u'] . "\n" . $new_save, "\n"); }
+                    // update metadata status
+                    if ($mulid_tmp) { ml_meta_set($mulid_tmp, ['status' => 'active']); }
                 }
 
                 ml_write_file("$dir/save", $new_save);
@@ -373,6 +536,17 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     ml_write_file("$dir/save", $new);
                     //end of add }
 
+                    // persist metadata for new rules
+                    ml_meta_set($mulid, [
+                        'iprange' => $iprange,
+                        'dspeed' => intval($_POST['dspeed']),
+                        'uspeed' => intval($_POST['uspeed']),
+                        'timestart' => $timestart,
+                        'timestop' => $timestop,
+                        'weekdays' => $weekdays,
+                        'status' => 'active'
+                    ]);
+
                     //then delete {
                     $drule           = base64_decode($_POST['drule']);
                     $urule           = base64_decode($_POST['urule']);
@@ -395,6 +569,9 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                     shell_exec("iptables $delete_urule");
 
                     ml_write_file("$dir/save", $untouched);
+                    // remove old metadata
+                    $old_mulid = $drule ? ml_extract_mulid($drule) : ($urule ? ml_extract_mulid($urule) : '');
+                    if ($old_mulid) { ml_meta_remove($old_mulid); }
                     //end of delete
 
                     echo json_encode([
@@ -486,6 +663,25 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         ml_write_file("$dir/save", trim($remain, "\n"));
                         ml_write_file("$dir/disabled", $disabled_new);
                     } elseif ($op == 'enable') {
+                        // reconstruct missing side using metadata
+                        $mulid_meta = $drule ? ml_extract_mulid($drule) : ($urule ? ml_extract_mulid($urule) : '');
+                        if ($mulid_meta) {
+                            $meta_all = ml_meta_read();
+                            if (isset($meta_all[$mulid_meta])) {
+                                $rec = $meta_all[$mulid_meta];
+                                $iprange = isset($rec['iprange']) ? $rec['iprange'] : '';
+                                $ds = isset($rec['dspeed']) ? intval($rec['dspeed']).'kb/s' : '';
+                                $us = isset($rec['uspeed']) ? intval($rec['uspeed']).'kb/s' : '';
+                                $t0 = isset($rec['timestart']) ? $rec['timestart'] : '';
+                                $t1 = isset($rec['timestop']) ? $rec['timestop'] : '';
+                                $wd = isset($rec['weekdays']) ? $rec['weekdays'] : '';
+                                $mod_time = '';
+                                if ($t0 && $t1) { $mod_time = "-m time --timestart $t0 --timestop $t1"; }
+                                if ($wd) { $mod_time .= ($mod_time? ' ' : '') . "--weekdays $wd"; $mod_time = trim($mod_time) ? (strpos($mod_time,'-m time')===0? $mod_time : "-m time $mod_time") : $mod_time; }
+                                if (!$drule && $iprange && $ds) { $drule = "-A FORWARD -m iprange --dst-range $iprange -m hashlimit --hashlimit-above $ds --hashlimit-mode dstip --hashlimit-name mulimiter_d$mulid_meta" . ($mod_time? " $mod_time" : '') . " -j DROP"; }
+                                if (!$urule && $iprange && $us) { $urule = "-A FORWARD -m iprange --src-range $iprange -m hashlimit --hashlimit-above $us --hashlimit-mode srcip --hashlimit-name mulimiter_u$mulid_meta" . ($mod_time? " $mod_time" : '') . " -j DROP"; }
+                            }
+                        }
                         if ($drule) { $insert_drule = str_replace('-A ', '-I ', $drule); shell_exec("iptables $insert_drule"); }
                         if ($urule) { $insert_urule = str_replace('-A ', '-I ', $urule); shell_exec("iptables $insert_urule"); }
                         // add to save, remove from disabled
@@ -497,6 +693,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         foreach ($disabled_arr as $sv) { if ($sv && $sv != $urule && $sv != $drule) $remain_disabled .= $sv."\n"; }
                         ml_write_file("$dir/save", $new_save);
                         ml_write_file("$dir/disabled", trim($remain_disabled, "\n"));
+                        if ($mulid_meta) { ml_meta_set($mulid_meta, ['status' => 'active']); }
                     } elseif ($op == 'delete') {
                         if ($drule) { $delete_drule = str_replace('-A ', '-D ', $drule); shell_exec("iptables $delete_drule"); }
                         if ($urule) { $delete_urule = str_replace('-A ', '-D ', $urule); shell_exec("iptables $delete_urule"); }
@@ -789,6 +986,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                         $disabled_arr = array_filter(explode("\n", trim($disabled_list, "\n")));
                         // index by mulid for pairing
                         $pairs = [];
+                        $meta_all = ml_meta_read();
                         foreach ($disabled_arr as $rule) {
                             if (strpos($rule, 'mulimiter_d') !== FALSE || strpos($rule, 'mulimiter_u') !== FALSE) {
                                 // extract mulid from --hashlimit-name
@@ -823,11 +1021,26 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             } elseif ($upload_rule && preg_match('/--src-range ([^ ]+)/', $upload_rule, $mURange)) {
                                 $iprange = str_replace('-', ' - ', $mURange[1]);
                             }
-                            if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $mD)) {
-                                $dspeed = str_replace('kb', ' kB', $mD[1]);
-                            }
-                            if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $mU)) {
-                                $uspeed = str_replace('kb', ' kB', $mU[1]);
+                            // prefer metadata for display if available
+                            $mulid_key = '';
+                            if ($download_rule) { $mulid_key = ml_extract_mulid($download_rule); }
+                            else if ($upload_rule) { $mulid_key = ml_extract_mulid($upload_rule); }
+                            if ($mulid_key && isset($meta_all[$mulid_key])) {
+                                $rec = $meta_all[$mulid_key];
+                                if (isset($rec['iprange']) && $rec['iprange']) { $iprange = str_replace('-', ' - ', $rec['iprange']); }
+                                if (isset($rec['dspeed'])) { $dspeed = intval($rec['dspeed']).' kB/s'; }
+                                if (isset($rec['uspeed'])) { $uspeed = intval($rec['uspeed']).' kB/s'; }
+                                if (isset($rec['timestart']) && isset($rec['timestop']) && $rec['timestart'] && $rec['timestop']) {
+                                    $time = $rec['timestart'].' - '.$rec['timestop'];
+                                }
+                                if (isset($rec['weekdays']) && $rec['weekdays']) { $weekdays = $rec['weekdays']; }
+                            } else {
+                                if ($download_rule && preg_match('/--hashlimit-above ([^ ]+)/', $download_rule, $mD)) {
+                                    $dspeed = str_replace('kb', ' kB', $mD[1]);
+                                }
+                                if ($upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $mU)) {
+                                    $uspeed = str_replace('kb', ' kB', $mU[1]);
+                                }
                             }
                             $tstart = '';
                             $tstop = '';
@@ -837,9 +1050,7 @@ if ($_SESSION[$app_name]['logedin'] == true) {
                             if ($tstart && $tstop) { $time = $tstart . ' - ' . $tstop; }
                             if ($src_for_time && preg_match('/--weekdays ([^ ]+)/', $src_for_time, $mWd)) { $weekdays = $mWd[1]; }
 
-                            if (!$dspeed && $upload_rule && preg_match('/--hashlimit-above ([^ ]+)/', $upload_rule, $mUF)) {
-                                $dspeed = str_replace('kb', ' kB', $mUF[1]);
-                            }
+                            // do not infer D speed from upload; show '-' if download rule missing
                             $is_partial = (!$download_rule || !$upload_rule);
                             $i++;
                         ?>
